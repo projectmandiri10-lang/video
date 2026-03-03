@@ -7,7 +7,7 @@
     "apps/web"
   ],
   "scripts": {
-    "dev": "concurrently \"npm:dev -w apps/server\" \"npm:dev -w apps/web\"",
+    "dev": "concurrently --kill-others-on-fail \"npm:dev -w apps/server\" \"npm:dev -w apps/web\"",
     "build": "npm run build -w apps/server && npm run build -w apps/web",
     "test": "npm run test -w apps/server",
     "start": "npm run start -w apps/server"

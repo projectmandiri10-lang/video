@@ -82,3 +82,6 @@ npm run start
 ```bash
 npm run test
 ```
+
+Catatan:
+- Runtime test memakai root storage terpisah (`apps/server/.test-runtime`) agar tidak mengubah `data/`, `outputs/`, atau `uploads/` lokal Anda.

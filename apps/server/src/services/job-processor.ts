@@ -25,6 +25,15 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function buildTitleVideoFilename(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return slug || "video";
+}
+
 function findStyleConfig(settings: AppSettings, styleId: StyleId) {
   return settings.styles.find((style) => style.styleId === styleId);
 }
@@ -264,8 +273,9 @@ export class JobProcessor implements IJobProcessor {
           wavPath,
           job.speechRate ?? styleConfig.speechRate
         );
-        const mp4NoSubtitlePath = path.join(outputDir, `${styleId}-nosub.mp4`);
-        const mp4Path = path.join(outputDir, `${styleId}.mp4`);
+        const videoBaseName = `${buildTitleVideoFilename(job.title)}-${styleId}`;
+        const mp4NoSubtitlePath = path.join(outputDir, `${videoBaseName}-nosub.mp4`);
+        const mp4Path = path.join(outputDir, `${videoBaseName}.mp4`);
         await combineVideoWithVoiceOver(
           job.videoPath,
           wavPath,
@@ -286,7 +296,7 @@ export class JobProcessor implements IJobProcessor {
                   errorMessage: undefined,
                   srtPath: `/outputs/${current.jobId}/${styleId}.srt`,
                   wavPath: `/outputs/${current.jobId}/${styleId}.wav`,
-                  mp4Path: `/outputs/${current.jobId}/${styleId}.mp4`,
+                  mp4Path: `/outputs/${current.jobId}/${videoBaseName}.mp4`,
                   captionPath: `/outputs/${current.jobId}/${styleId}-caption.txt`,
                   captionText: socialMetadata.caption,
                   hashtags: socialMetadata.hashtags,
