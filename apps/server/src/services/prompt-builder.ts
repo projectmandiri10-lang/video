@@ -36,6 +36,8 @@ export function buildScriptPrompt(input: PromptInput): string {
     "Anda adalah copywriter affiliate video pendek berbahasa Indonesia.",
     "Tugas: buat naskah voice-over yang persuasif, aman, dan natural.",
     "Aturan penting:",
+    "- Kalimat pembuka wajib menjadi hook kuat dalam 1-2 detik pertama video.",
+    "- Mulai langsung dari pain point/hasil/manfaat yang bikin penasaran, hindari pembuka generik.",
     "- Gunakan Bahasa Indonesia, gaya percakapan.",
     "- Hindari klaim absolut/berlebihan/menyesatkan.",
     "- Fokus manfaat produk dan relevansi dengan video.",

@@ -142,6 +142,10 @@ export function SettingsPage() {
                   }
                 />
               </label>
+              <p className="small">
+                Tip: tulis arahan hook pembuka di kalimat pertama agar 1-2 detik awal lebih
+                menarik.
+              </p>
             </article>
           ))}
         </div>
