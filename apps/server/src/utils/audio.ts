@@ -246,7 +246,7 @@ export function buildTimelineFilter(
     const end = entry.item.endSec.toFixed(3);
     const outLabel = `v${index}`;
     parts.push(
-      `[${index}:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,fps=30,format=yuv420p[${outLabel}]`
+      `[${index}:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p[${outLabel}]`
     );
     labels.push(`[${outLabel}]`);
   }

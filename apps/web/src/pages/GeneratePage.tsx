@@ -94,6 +94,8 @@ export function GeneratePage() {
   const [voiceMessage, setVoiceMessage] = useState("");
   const [voiceError, setVoiceError] = useState("");
   const [previewingVoice, setPreviewingVoice] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [selectedTimelineIndex, setSelectedTimelineIndex] = useState(0);
 
   const initEditorSession = async (previousSessionId?: string) => {
     setEditorLoading(true);
@@ -188,6 +190,14 @@ export function GeneratePage() {
     () => ttsVoices.find((voice) => voice.voiceName === selectedVoiceName),
     [ttsVoices, selectedVoiceName]
   );
+  const timelineDurations = useMemo(
+    () => timelineDraft.map((item) => Math.max(0, item.endSec - item.startSec)),
+    [timelineDraft]
+  );
+  const timelineTotalDuration = useMemo(
+    () => timelineDurations.reduce((sum, item) => sum + item, 0),
+    [timelineDurations]
+  );
 
   useEffect(() => {
     if (!ttsVoices.length) {
@@ -208,6 +218,16 @@ export function GeneratePage() {
     }
   }, [excitedByGender, selectedVoiceName, ttsVoices, voicesByGender]);
 
+  useEffect(() => {
+    if (!timelineDraft.length) {
+      setSelectedTimelineIndex(0);
+      return;
+    }
+    if (selectedTimelineIndex > timelineDraft.length - 1) {
+      setSelectedTimelineIndex(timelineDraft.length - 1);
+    }
+  }, [selectedTimelineIndex, timelineDraft]);
+
   const previewUrl = editorSession?.previewPublicPath
     ? toAbsoluteOutputUrl(editorSession.previewPublicPath)
     : "";
@@ -217,6 +237,7 @@ export function GeneratePage() {
 
   const canGenerateFromUpload = Boolean(video);
   const canGenerateFromEditing = Boolean(editorSession?.sessionId && hasPreview);
+  const selectedTimelineItem = timelineDraft[selectedTimelineIndex];
 
   const isGenerateDisabled =
     loading ||
@@ -299,11 +320,13 @@ export function GeneratePage() {
           ...item,
           [key]: toFixedSeconds(clamped)
         };
-        if (key === "startSec" && next.startSec > next.endSec) {
-          next.endSec = next.startSec;
+        if (key === "startSec") {
+          const maxStart = Math.max(0, next.endSec - MIN_CLIP_SECONDS);
+          next.startSec = toFixedSeconds(Math.min(next.startSec, maxStart));
         }
-        if (key === "endSec" && next.endSec < next.startSec) {
-          next.startSec = next.endSec;
+        if (key === "endSec") {
+          const minEnd = Math.min(duration, next.startSec + MIN_CLIP_SECONDS);
+          next.endSec = toFixedSeconds(Math.max(next.endSec, minEnd));
         }
         return next;
       })
@@ -325,6 +348,19 @@ export function GeneratePage() {
       next[index] = second;
       next[target] = first;
       return next;
+    });
+  };
+
+  const removeTimelineItem = (index: number) => {
+    setTimelineDraft((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setSelectedTimelineIndex((current) => {
+      if (current > index) {
+        return current - 1;
+      }
+      if (current === index) {
+        return Math.max(0, current - 1);
+      }
+      return current;
     });
   };
 
@@ -481,142 +517,197 @@ export function GeneratePage() {
   };
 
   return (
-    <section className="card generate-layout">
-      <div className="editor-panel">
-        <div className="row-head">
+    <section className={`card editor-shell ${isPanelOpen ? "drawer-open" : ""}`}>
+      <button
+        type="button"
+        className={`drawer-toggle ${isPanelOpen ? "open" : ""}`}
+        onClick={() => setIsPanelOpen((current) => !current)}
+      >
+        {isPanelOpen ? "→" : "←"}
+      </button>
+
+      <div className="editor-stage">
+        <div className="editor-toolbar">
           <h2>Video Editor</h2>
-          <button type="button" onClick={onResetEditor} disabled={editorLoading || resettingEditor}>
-            {resettingEditor ? "Resetting..." : "Reset Session"}
-          </button>
+          <div className="timeline-actions">
+            <label className="upload-inline">
+              <input
+                type="file"
+                accept="video/*"
+                multiple
+                disabled={editorLoading || uploadingClips || !editorSession}
+                onChange={(event) => {
+                  const files = Array.from(event.target.files || []);
+                  void handleUploadClips(files);
+                  event.target.value = "";
+                }}
+              />
+              {uploadingClips ? "Uploading..." : "Tambah Clip"}
+            </label>
+            <button
+              type="button"
+              onClick={() => void persistTimeline()}
+              disabled={editorLoading || savingTimeline || !timelineDraft.length}
+            >
+              {savingTimeline ? "Menyimpan..." : "Simpan Timeline"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void onRenderPreview()}
+              disabled={editorLoading || renderingPreview || savingTimeline || !timelineDraft.length}
+            >
+              {renderingPreview ? "Rendering..." : "Render Preview"}
+            </button>
+            <button type="button" onClick={onResetEditor} disabled={editorLoading || resettingEditor}>
+              {resettingEditor ? "Resetting..." : "Reset"}
+            </button>
+          </div>
         </div>
-        <p className="small">Gabungkan multi-clip, trim per clip, render preview muted (tanpa audio asli).</p>
-        <label>
-          Tambah Clip
-          <input
-            type="file"
-            accept="video/*"
-            multiple
-            disabled={editorLoading || uploadingClips || !editorSession}
-            onChange={(event) => {
-              const files = Array.from(event.target.files || []);
-              void handleUploadClips(files);
-              event.target.value = "";
-            }}
-          />
-        </label>
-        {shortClipsCount > 0 && (
-          <p className="err-inline">
-            Ada {shortClipsCount} clip berdurasi kurang dari {MIN_CLIP_SECONDS} detik. Clip ini tidak
-            masuk timeline.
-          </p>
-        )}
+
+        <div className="preview-box">
+          {hasPreview ? (
+            <>
+              <video controls src={previewUrl} className="preview-video" />
+              {editorSession?.previewDurationSec ? (
+                <p className="small">
+                  Durasi preview: {editorSession.previewDurationSec.toFixed(2)} detik
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="small">Belum ada preview. Upload clip, trim, lalu Render Preview.</p>
+          )}
+        </div>
+
         <div className="timeline-box">
           <div className="row-head">
             <h3>Timeline</h3>
-            <div className="timeline-actions">
-              <button
-                type="button"
-                onClick={() => void persistTimeline()}
-                disabled={editorLoading || savingTimeline || !timelineDraft.length}
-              >
-                {savingTimeline ? "Menyimpan..." : "Simpan Timeline"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void onRenderPreview()}
-                disabled={
-                  editorLoading || renderingPreview || savingTimeline || !timelineDraft.length
-                }
-              >
-                {renderingPreview ? "Rendering..." : "Render Preview"}
-              </button>
-            </div>
+            <p className="small">
+              {timelineDraft.length} clip | total {timelineTotalDuration.toFixed(2)} detik
+            </p>
           </div>
+          {shortClipsCount > 0 && (
+            <p className="err-inline">
+              Ada {shortClipsCount} clip berdurasi kurang dari {MIN_CLIP_SECONDS} detik, tidak masuk
+              timeline.
+            </p>
+          )}
           {!timelineDraft.length && (
-            <p className="small">Belum ada item timeline. Upload clip minimal {MIN_CLIP_SECONDS} detik.</p>
+            <p className="small">Belum ada item timeline. Tambah clip minimal {MIN_CLIP_SECONDS} detik.</p>
           )}
-          {timelineDraft.length > 0 && (
-            <table className="timeline-table">
-              <thead>
-                <tr>
-                  <th>Clip</th>
-                  <th>Start (s)</th>
-                  <th>End (s)</th>
-                  <th>Durasi</th>
-                  <th>Urutan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timelineDraft.map((item, index) => {
-                  const clip = clipsById.get(item.clipId);
-                  const clipName = clip?.originalName || item.clipId;
-                  const duration = Math.max(0, item.endSec - item.startSec);
-                  return (
-                    <tr key={`${item.clipId}-${index}`}>
-                      <td>
-                        <div>{clipName}</div>
-                        <div className="small">
-                          Source: {clip ? clip.durationSec.toFixed(2) : "0.00"}s
-                        </div>
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.1}
-                          value={item.startSec}
-                          onChange={(event) =>
-                            onTimelineValueChange(index, "startSec", Number(event.target.value))
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.1}
-                          value={item.endSec}
-                          onChange={(event) =>
-                            onTimelineValueChange(index, "endSec", Number(event.target.value))
-                          }
-                        />
-                      </td>
-                      <td>
-                        <span className={duration < MIN_CLIP_SECONDS ? "err-inline" : "small"}>
-                          {duration.toFixed(2)}s
-                        </span>
-                      </td>
-                      <td className="timeline-order">
-                        <button type="button" onClick={() => moveTimelineItem(index, -1)}>
-                          Up
-                        </button>
-                        <button type="button" onClick={() => moveTimelineItem(index, 1)}>
-                          Down
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-        {hasPreview && (
-          <div className="preview-box">
-            <h3>Preview Hasil Editing</h3>
-            <video controls src={previewUrl} className="preview-video" />
-            {editorSession?.previewDurationSec ? (
-              <p className="small">Durasi preview: {editorSession.previewDurationSec.toFixed(2)} detik</p>
-            ) : null}
+          <div className="timeline-strip">
+            {timelineDraft.map((item, index) => {
+              const clip = clipsById.get(item.clipId);
+              const clipName = clip?.originalName || item.clipId;
+              const duration = timelineDurations[index] || 0;
+              return (
+                <button
+                  key={`${item.clipId}-${index}`}
+                  type="button"
+                  className={`timeline-chip ${
+                    selectedTimelineIndex === index ? "selected" : ""
+                  }`}
+                  style={{ flexGrow: Math.max(1, duration) }}
+                  onClick={() => setSelectedTimelineIndex(index)}
+                >
+                  <span className="timeline-chip-title">{index + 1}. {clipName}</span>
+                  <span className="timeline-chip-time">
+                    {item.startSec.toFixed(1)}s - {item.endSec.toFixed(1)}s
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
+
+        {selectedTimelineItem && (() => {
+          const clip = clipsById.get(selectedTimelineItem.clipId);
+          const clipDuration = clip?.durationSec || 0;
+          const maxStart = Math.max(0, selectedTimelineItem.endSec - MIN_CLIP_SECONDS);
+          const minEnd = Math.min(clipDuration, selectedTimelineItem.startSec + MIN_CLIP_SECONDS);
+          const trimmedDuration = Math.max(
+            0,
+            selectedTimelineItem.endSec - selectedTimelineItem.startSec
+          );
+
+          return (
+            <div className="trim-panel">
+              <div className="row-head">
+                <h3>Trim Tool</h3>
+                <div className="timeline-actions">
+                  <button
+                    type="button"
+                    onClick={() => moveTimelineItem(selectedTimelineIndex, -1)}
+                    disabled={selectedTimelineIndex === 0}
+                  >
+                    Geser Kiri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveTimelineItem(selectedTimelineIndex, 1)}
+                    disabled={selectedTimelineIndex >= timelineDraft.length - 1}
+                  >
+                    Geser Kanan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeTimelineItem(selectedTimelineIndex)}
+                  >
+                    Delete Clip
+                  </button>
+                </div>
+              </div>
+              <p className="small">
+                Clip: {clip?.originalName || selectedTimelineItem.clipId} | Source{" "}
+                {clipDuration.toFixed(2)} detik | Hasil trim {trimmedDuration.toFixed(2)} detik
+              </p>
+              <label>
+                Handle Start ({selectedTimelineItem.startSec.toFixed(2)}s)
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, maxStart)}
+                  step={0.05}
+                  value={selectedTimelineItem.startSec}
+                  onChange={(event) =>
+                    onTimelineValueChange(
+                      selectedTimelineIndex,
+                      "startSec",
+                      Number(event.target.value)
+                    )
+                  }
+                />
+              </label>
+              <label>
+                Handle End ({selectedTimelineItem.endSec.toFixed(2)}s)
+                <input
+                  type="range"
+                  min={minEnd}
+                  max={Math.max(minEnd, clipDuration)}
+                  step={0.05}
+                  value={selectedTimelineItem.endSec}
+                  onChange={(event) =>
+                    onTimelineValueChange(
+                      selectedTimelineIndex,
+                      "endSec",
+                      Number(event.target.value)
+                    )
+                  }
+                />
+              </label>
+            </div>
+          );
+        })()}
+
         {editorMessage && <p className="ok-text">{editorMessage}</p>}
         {editorError && <p className="err-text">{editorError}</p>}
+        {message && <p className="ok-text">{message}</p>}
+        {error && <p className="err-text">{error}</p>}
       </div>
 
-      <div>
-        <h2>Generate</h2>
-        <p className="small">Pilih source video dari hasil editing atau upload langsung.</p>
+      <aside className={`generate-drawer ${isPanelOpen ? "open" : ""}`}>
+        <h3>Generate Panel</h3>
+        <p className="small">Semua input generate disembunyikan di panel ini agar editing tetap fokus.</p>
         <form onSubmit={onSubmit} className="grid-form">
           <fieldset className="style-picker">
             <legend>Source Video</legend>
@@ -643,7 +734,7 @@ export function GeneratePage() {
               </label>
             </div>
             {sourceType === "editing" && !hasPreview && (
-              <p className="err-inline">Preview editor belum ada. Klik Render Preview terlebih dahulu.</p>
+              <p className="err-inline">Preview editor belum ada. Klik Render Preview dulu.</p>
             )}
             {sourceType === "upload" && !video && (
               <p className="err-inline">Pilih file upload jika source = upload.</p>
@@ -651,7 +742,7 @@ export function GeneratePage() {
           </fieldset>
 
           <label>
-            Upload Video (tetap tersedia)
+            Upload Video Langsung
             <input
               id="video-input"
               type="file"
@@ -662,9 +753,9 @@ export function GeneratePage() {
 
           <fieldset className="style-picker">
             <legend>Style Video</legend>
-            {settingsLoading && <p className="small">Memuat pilihan style...</p>}
+            {settingsLoading && <p className="small">Memuat style...</p>}
             {!settingsLoading && !enabledStyles.length && (
-              <p className="err-inline">Tidak ada style aktif. Aktifkan di halaman Settings.</p>
+              <p className="err-inline">Tidak ada style aktif. Aktifkan di Settings.</p>
             )}
             {!settingsLoading && enabledStyles.length > 0 && (
               <div className="style-options">
@@ -683,80 +774,71 @@ export function GeneratePage() {
               </div>
             )}
           </fieldset>
+
           <fieldset className="style-picker">
-            <legend>TTS Voice Gemini</legend>
+            <legend>TTS Voice</legend>
             {voiceLoading && <p className="small">Memuat katalog voice Gemini...</p>}
             {!voiceLoading && !ttsVoices.length && (
               <p className="err-inline">Katalog voice tidak tersedia.</p>
             )}
             {!voiceLoading && ttsVoices.length > 0 && (
               <>
-                <div className="style-options">
-                  <label>
-                    Gender
-                    <select
-                      value={selectedVoiceGender}
-                      onChange={(event) =>
-                        onVoiceGenderChange(event.target.value as VoiceGender)
-                      }
-                    >
-                      <option value="female">Wanita</option>
-                      <option value="male">Pria</option>
-                      <option value="neutral">Netral</option>
-                    </select>
-                  </label>
-                  <label>
-                    Versi Excited
-                    <select
-                      value={selectedExcitedPresetId}
-                      onChange={(event) => onExcitedPresetChange(event.target.value)}
-                    >
-                      {!excitedByGender.length && <option value="">Tidak ada preset excited</option>}
-                      {excitedByGender.map((preset) => (
-                        <option key={preset.presetId} value={preset.presetId}>
-                          {preset.label} ({preset.voiceName})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Nama Voice Over
-                    <select
-                      value={selectedVoiceName}
-                      onChange={(event) => {
-                        const nextVoice = event.target.value;
-                        setSelectedVoiceName(nextVoice);
-                        const matchedPreset = excitedByGender.find(
-                          (preset) => preset.voiceName === nextVoice
-                        );
-                        setSelectedExcitedPresetId(matchedPreset?.presetId || "");
-                      }}
-                    >
-                      {voicesByGender.map((voice) => (
-                        <option key={voice.voiceName} value={voice.voiceName}>
-                          {voice.label} - {voice.tone}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Speech Rate
-                    <input
-                      type="number"
-                      min={0.7}
-                      max={1.3}
-                      step={0.05}
-                      value={selectedSpeechRate}
-                      onChange={(event) => setSelectedSpeechRate(Number(event.target.value))}
-                    />
-                  </label>
-                </div>
-                {selectedVoice && (
-                  <p className="small">
-                    Voice aktif: <strong>{selectedVoice.label}</strong> ({selectedVoice.gender}) -
-                    tone {selectedVoice.tone}
-                  </p>
-                )}
+                <label>
+                  Gender
+                  <select
+                    value={selectedVoiceGender}
+                    onChange={(event) => onVoiceGenderChange(event.target.value as VoiceGender)}
+                  >
+                    <option value="female">Wanita</option>
+                    <option value="male">Pria</option>
+                    <option value="neutral">Netral</option>
+                  </select>
+                </label>
+                <label>
+                  Versi Excited
+                  <select
+                    value={selectedExcitedPresetId}
+                    onChange={(event) => onExcitedPresetChange(event.target.value)}
+                  >
+                    {!excitedByGender.length && <option value="">Tidak ada preset excited</option>}
+                    {excitedByGender.map((preset) => (
+                      <option key={preset.presetId} value={preset.presetId}>
+                        {preset.label} ({preset.voiceName})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Nama Voice Over
+                  <select
+                    value={selectedVoiceName}
+                    onChange={(event) => {
+                      const nextVoice = event.target.value;
+                      setSelectedVoiceName(nextVoice);
+                      const matchedPreset = excitedByGender.find(
+                        (preset) => preset.voiceName === nextVoice
+                      );
+                      setSelectedExcitedPresetId(matchedPreset?.presetId || "");
+                    }}
+                  >
+                    {voicesByGender.map((voice) => (
+                      <option key={voice.voiceName} value={voice.voiceName}>
+                        {voice.label} - {voice.tone}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Speech Rate
+                  <input
+                    type="number"
+                    min={0.7}
+                    max={1.3}
+                    step={0.05}
+                    value={selectedSpeechRate}
+                    onChange={(event) => setSelectedSpeechRate(Number(event.target.value))}
+                  />
+                </label>
                 <label>
                   Teks Review Suara
                   <textarea
@@ -778,6 +860,7 @@ export function GeneratePage() {
               </>
             )}
           </fieldset>
+
           <label>
             Judul
             <input value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -785,7 +868,7 @@ export function GeneratePage() {
           <label>
             Deskripsi
             <textarea
-              rows={5}
+              rows={4}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
@@ -802,9 +885,7 @@ export function GeneratePage() {
             {loading ? "Memproses..." : "Generate Job"}
           </button>
         </form>
-        {message && <p className="ok-text">{message}</p>}
-        {error && <p className="err-text">{error}</p>}
-      </div>
+      </aside>
     </section>
   );
 }

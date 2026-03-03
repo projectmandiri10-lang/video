@@ -133,7 +133,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const openOutputLocation = options.openOutputLocation ?? openPathInExplorer;
 
   await app.register(cors, {
-    origin: options.webOrigin
+    origin: options.webOrigin,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
   });
   await app.register(multipart, {
     limits: {
