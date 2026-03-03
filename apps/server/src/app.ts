@@ -231,6 +231,25 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return jobs;
   });
 
+  app.delete("/api/jobs/:jobId", async (request, reply) => {
+    const params = request.params as { jobId: string };
+    const job = await options.jobsStore.getById(params.jobId);
+    if (!job) {
+      return reply.code(404).send({ message: "Job tidak ditemukan." });
+    }
+    if (job.overallStatus === "running" || job.overallStatus === "queued") {
+      return reply.code(400).send({
+        message: "Job dengan status running/queued tidak bisa dihapus."
+      });
+    }
+
+    const deleted = await options.jobsStore.delete(params.jobId);
+    if (!deleted) {
+      return reply.code(404).send({ message: "Job tidak ditemukan." });
+    }
+    return reply.code(204).send();
+  });
+
   app.post("/api/editor/session", async (_request, reply) => {
     try {
       const session = await options.editorService.createSession();
@@ -375,6 +394,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
               ...item,
               status: "pending",
               errorMessage: undefined,
+              retryCount: 0,
+              nextRetryAt: undefined,
+              lastErrorCode: undefined,
               updatedAt: nowIso()
             }
           : item

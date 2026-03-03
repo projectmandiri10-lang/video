@@ -112,6 +112,13 @@ export async function fetchJobDetail(jobId: string): Promise<JobRecord> {
   return parseResponse<JobRecord>(res);
 }
 
+export async function deleteJob(jobId: string): Promise<void> {
+  const res = await request(`${API_BASE}/api/jobs/${jobId}`, {
+    method: "DELETE"
+  });
+  await parseResponse<void>(res);
+}
+
 export async function retryStyle(jobId: string, styleId: StyleId): Promise<void> {
   const res = await request(`${API_BASE}/api/jobs/${jobId}/retry`, {
     method: "POST",

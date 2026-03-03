@@ -21,6 +21,7 @@ async function bootstrap(): Promise<void> {
 
   const gemini = new GeminiService(env.geminiApiKey, logger);
   const processor = new JobProcessor(jobsStore, settingsStore, gemini, logger);
+  await processor.restoreScheduledRetries();
   const app = await buildApp({
     logger,
     webOrigin: env.webOrigin,

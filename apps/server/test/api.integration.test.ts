@@ -1,5 +1,5 @@
 import FormData from "form-data";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { JobsStore } from "../src/stores/jobs-store.js";
 import { DEFAULT_SETTINGS } from "../src/constants.js";
 import type { EditClipAsset, EditSessionRecord, EditTimelineItem, StyleId } from "../src/types.js";
 import { resetTestStorage } from "./helpers.js";
-import { EDITS_DIR } from "../src/utils/paths.js";
+import { EDITS_DIR, OUTPUTS_DIR, UPLOADS_DIR } from "../src/utils/paths.js";
 
 describe("api integration", () => {
   const logger = pino({ level: "silent" });
@@ -270,6 +270,90 @@ describe("api integration", () => {
     expect(retryResponse.statusCode).toBe(200);
     expect(enqueueCalls.length).toBeGreaterThan(1);
     expect(enqueueCalls[enqueueCalls.length - 1]?.styleIds).toEqual(["evergreen"]);
+  });
+
+  it("deletes completed job and removes output/upload artifacts", async () => {
+    const form = new FormData();
+    form.append("video", Buffer.from("fake-video-data"), {
+      filename: "clip.mp4",
+      contentType: "video/mp4"
+    });
+    form.append("title", "Judul Delete");
+    form.append("description", "Deskripsi Delete");
+    form.append("affiliateLink", "https://contoh-affiliate.test/delete");
+    form.append("styleId", "evergreen");
+    form.append("sourceType", "upload");
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/jobs",
+      payload: form.getBuffer(),
+      headers: form.getHeaders()
+    });
+    const payload = createResponse.json() as { jobId: string };
+
+    const outputDir = path.join(OUTPUTS_DIR, payload.jobId);
+    const uploadDir = path.join(UPLOADS_DIR, payload.jobId);
+    await mkdir(outputDir, { recursive: true });
+    await writeFile(path.join(outputDir, "evergreen.srt"), "1", "utf8");
+    await writeFile(path.join(uploadDir, "source.mp4"), "video", "utf8");
+
+    await jobsStore.update(payload.jobId, (job) => ({
+      ...job,
+      overallStatus: "success",
+      styles: job.styles.map((style) => ({
+        ...style,
+        status: "done",
+        updatedAt: new Date().toISOString()
+      }))
+    }));
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/jobs/${payload.jobId}`
+    });
+
+    expect(deleteResponse.statusCode).toBe(204);
+    expect(await jobsStore.getById(payload.jobId)).toBeUndefined();
+    await expect(access(outputDir)).rejects.toThrow();
+    await expect(access(uploadDir)).rejects.toThrow();
+  });
+
+  it("blocks delete while job queued or running", async () => {
+    const form = new FormData();
+    form.append("video", Buffer.from("fake-video-data"), {
+      filename: "clip.mp4",
+      contentType: "video/mp4"
+    });
+    form.append("title", "Judul Block Delete");
+    form.append("description", "Deskripsi Block Delete");
+    form.append("affiliateLink", "https://contoh-affiliate.test/block-delete");
+    form.append("styleId", "evergreen");
+    form.append("sourceType", "upload");
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/jobs",
+      payload: form.getBuffer(),
+      headers: form.getHeaders()
+    });
+    const payload = createResponse.json() as { jobId: string };
+
+    const blockedQueued = await app.inject({
+      method: "DELETE",
+      url: `/api/jobs/${payload.jobId}`
+    });
+    expect(blockedQueued.statusCode).toBe(400);
+
+    await jobsStore.update(payload.jobId, (job) => ({
+      ...job,
+      overallStatus: "running"
+    }));
+    const blockedRunning = await app.inject({
+      method: "DELETE",
+      url: `/api/jobs/${payload.jobId}`
+    });
+    expect(blockedRunning.statusCode).toBe(400);
   });
 
   it("opens output location", async () => {

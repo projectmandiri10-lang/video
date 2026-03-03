@@ -40,6 +40,9 @@ export interface StyleRun {
   styleId: StyleId;
   status: StyleStatus;
   errorMessage?: string;
+  retryCount?: number;
+  nextRetryAt?: string;
+  lastErrorCode?: "UNAVAILABLE" | "RESOURCE_EXHAUSTED" | "OTHER";
   srtPath?: string;
   wavPath?: string;
   mp4Path?: string;

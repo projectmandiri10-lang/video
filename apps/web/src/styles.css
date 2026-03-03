@@ -122,12 +122,29 @@ button:hover {
   gap: 8px;
 }
 
+.job-item-wrap {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
 .job-item {
   text-align: left;
 }
 
-.job-item.active {
+.job-item-wrap.active .job-item {
   border-color: var(--primary);
+}
+
+.danger-btn {
+  border-color: #e8b4b4;
+  color: var(--danger);
+}
+
+.danger-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .small {
