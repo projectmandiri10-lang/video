@@ -19,7 +19,6 @@ Aplikasi lokal untuk otomatisasi:
 - `data/jobs.json`: metadata 20 job terakhir
 - `outputs/<jobId>`: file hasil `.srt`, `.wav`, `.mp4`, dan `*-caption.txt`
 - `uploads/<jobId>`: video source upload
-- `edits/<sessionId>`: clip editor + `preview.mp4`
 
 ## Setup
 1. Install dependency:
@@ -57,21 +56,13 @@ npm run start
 - `GET /api/settings`
 - `PUT /api/settings`
 - `POST /api/jobs` (multipart):
-  - wajib: `title`, `description`, `affiliateLink`, `styleId`, `sourceType`
-  - jika `sourceType=upload`: kirim `video`
-  - jika `sourceType=editing`: kirim `editSessionId` (preview harus sudah dirender)
+  - wajib: `title`, `description`, `affiliateLink`, `styleId`, `sourceType=upload`, `video`
 - `GET /api/jobs`
 - `GET /api/jobs/:jobId`
 - `POST /api/jobs/:jobId/retry` body `{ "styleId": "evergreen" | "soft_selling" | "hard_selling" | "problem_solution" }`
 - `POST /api/jobs/:jobId/open-location` body `{ "styleId": "evergreen" | "soft_selling" | "hard_selling" | "problem_solution" }`
 - `GET /api/tts/voices`
 - `POST /api/tts/preview` body `{ "voiceName": "...", "speechRate": 1.0, "text": "..." }`
-- `POST /api/editor/session`
-- `GET /api/editor/:sessionId`
-- `POST /api/editor/:sessionId/clips`
-- `PUT /api/editor/:sessionId/timeline`
-- `POST /api/editor/:sessionId/render-preview`
-- `DELETE /api/editor/:sessionId`
 
 ## Catatan Operasional
 - Maks durasi video default: 60 detik (ubah di settings).
@@ -80,15 +71,11 @@ npm run start
 - Riwayat job otomatis dipangkas maksimal 20 entry.
 - Log tersimpan di `logs/app.log`.
 - Tombol output di UI membuka folder hasil (`Open File Location`) alih-alih download langsung.
-- Halaman `Generate` punya 2 source:
-  - `Editing`: editor multi-clip (trim, urutkan, render preview)
-  - `Upload`: upload video langsung
 - Halaman `Generate` juga menyediakan:
   - dropdown gender voice (`Wanita/Pria/Netral`)
   - dropdown versi `Excited` (V1-V3)
   - dropdown nama voice resmi Gemini
   - review suara (preview audio) sebelum generate
-- Clip timeline wajib durasi minimal 5 detik per clip.
 - Tab `Jobs` menampilkan caption final siap copy serta tombol copy affiliate link.
 
 ## Testing

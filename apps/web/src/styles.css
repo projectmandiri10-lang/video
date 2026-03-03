@@ -66,84 +66,6 @@ nav {
   padding: 18px;
 }
 
-.editor-shell {
-  position: relative;
-  overflow: hidden;
-  min-height: 680px;
-}
-
-.editor-stage {
-  display: grid;
-  gap: 12px;
-  transition: margin-right 0.22s ease;
-}
-
-.editor-shell.drawer-open .editor-stage {
-  margin-right: 360px;
-}
-
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.drawer-toggle {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  z-index: 30;
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  padding: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.drawer-toggle.open {
-  right: 368px;
-}
-
-.generate-drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  height: 100%;
-  width: 360px;
-  padding: 16px 14px 14px;
-  border-left: 1px solid var(--line);
-  background: #fcfdff;
-  transform: translateX(102%);
-  transition: transform 0.22s ease;
-  overflow-y: auto;
-}
-
-.generate-drawer.open {
-  transform: translateX(0);
-}
-
-.generate-drawer h3 {
-  margin-top: 24px;
-}
-
-.upload-inline {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 12px;
-  cursor: pointer;
-  font-weight: 600;
-  background: #fff;
-}
-
-.upload-inline input {
-  display: none;
-}
-
 .grid-form {
   display: grid;
   gap: 12px;
@@ -274,85 +196,6 @@ button:hover {
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 
-.editor-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.timeline-box,
-.preview-box {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 12px;
-  display: grid;
-  gap: 10px;
-  background: #fbfcff;
-}
-
-.timeline-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.timeline-strip {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.timeline-chip {
-  display: grid;
-  gap: 6px;
-  text-align: left;
-  min-width: 140px;
-  padding: 10px;
-  background: #f5f8ff;
-  border: 1px solid #c9d7f7;
-}
-
-.timeline-chip.selected {
-  border-color: var(--primary);
-  background: #eaf2ff;
-}
-
-.timeline-chip-title {
-  font-weight: 600;
-  font-size: 0.9rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.timeline-chip-time {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.trim-panel {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 12px;
-  display: grid;
-  gap: 10px;
-  background: #fbfcff;
-}
-
-.preview-video {
-  width: 100%;
-  max-height: 420px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #000;
-}
-
-.source-options {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
 .style-card {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -403,37 +246,6 @@ button:hover {
 }
 
 @media (max-width: 900px) {
-  .editor-shell {
-    min-height: auto;
-  }
-
-  .editor-shell.drawer-open .editor-stage {
-    margin-right: 0;
-  }
-
-  .drawer-toggle,
-  .drawer-toggle.open {
-    right: 8px;
-  }
-
-  .generate-drawer {
-    position: static;
-    transform: none;
-    width: 100%;
-    height: auto;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-    margin-top: 12px;
-  }
-
-  .generate-drawer:not(.open) {
-    display: none;
-  }
-
-  .generate-drawer h3 {
-    margin-top: 0;
-  }
-
   .split-layout {
     grid-template-columns: 1fr;
   }

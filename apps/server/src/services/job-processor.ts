@@ -51,6 +51,11 @@ function fallbackHashtags(title: string, styleId: StyleId): string[] {
 }
 
 function parseGeminiQuotaMessage(message: string): string | undefined {
+  const lowered = message.toLowerCase();
+  if (lowered.includes('"status":"unavailable"') || lowered.includes(" 503")) {
+    return "Model Gemini sedang high demand (503 UNAVAILABLE). Coba retry job ini lagi dalam 1-5 menit.";
+  }
+
   try {
     const payload = JSON.parse(message) as {
       error?: {
@@ -62,6 +67,9 @@ function parseGeminiQuotaMessage(message: string): string | undefined {
     };
     const status = payload.error?.status || "";
     const code = payload.error?.code || 0;
+    if (status === "UNAVAILABLE" || code === 503) {
+      return "Model Gemini sedang high demand (503 UNAVAILABLE). Coba retry job ini lagi dalam 1-5 menit.";
+    }
     if (!(status === "RESOURCE_EXHAUSTED" || code === 429)) {
       return undefined;
     }
