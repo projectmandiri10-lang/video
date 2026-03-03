@@ -8,15 +8,29 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import mime from "mime-types";
 import { nanoid } from "nanoid";
-import { MAX_UPLOAD_BYTES } from "./constants.js";
+import {
+  GEMINI_EXCITED_PRESETS,
+  GEMINI_TTS_VOICES,
+  MAX_UPLOAD_BYTES,
+  findTtsVoiceByName
+} from "./constants.js";
 import { JobsStore } from "./stores/jobs-store.js";
 import { SettingsStore } from "./stores/settings-store.js";
-import type { EditSessionRecord, JobRecord, StyleId, VideoSourceType } from "./types.js";
+import type {
+  EditSessionRecord,
+  GenerateSpeechInput,
+  JobRecord,
+  StyleId,
+  VideoSourceType
+} from "./types.js";
 import {
+  parseSpeechRate,
+  parseTtsPreviewInput,
   parseRetryStyleId,
   parseSettings,
   parseTimelineItems,
-  parseVideoSourceType
+  parseVideoSourceType,
+  parseVoiceGender
 } from "./validation.js";
 import {
   EDITS_DIR,
@@ -28,6 +42,7 @@ import { probeVideoDuration } from "./utils/video.js";
 import type { IJobProcessor } from "./services/job-processor.js";
 import { openPathInExplorer } from "./utils/open-location.js";
 import { EditorService, sessionPreviewPublicPath } from "./services/editor-service.js";
+import { writeWav24kMono } from "./utils/audio.js";
 
 interface BuildAppOptions {
   logger: FastifyBaseLogger;
@@ -36,6 +51,11 @@ interface BuildAppOptions {
   jobsStore: JobsStore;
   editorService: EditorService;
   processor: IJobProcessor;
+  speechGenerator?: {
+    generateSpeech: (
+      input: GenerateSpeechInput
+    ) => Promise<{ data: Buffer; mimeType: string }>;
+  };
   probeDuration?: (videoPath: string) => Promise<number>;
   openOutputLocation?: (folderPath: string) => Promise<void>;
 }
@@ -148,6 +168,57 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     } catch (error) {
       return reply.code(400).send({
         message: "Settings tidak valid.",
+        error: (error as { message?: string })?.message
+      });
+    }
+  });
+
+  app.get("/api/tts/voices", async () => {
+    return {
+      voices: GEMINI_TTS_VOICES,
+      excitedPresets: GEMINI_EXCITED_PRESETS
+    };
+  });
+
+  app.post("/api/tts/preview", async (request, reply) => {
+    if (!options.speechGenerator) {
+      return reply.code(503).send({
+        message: "Speech generator tidak tersedia di server."
+      });
+    }
+
+    try {
+      const payload = parseTtsPreviewInput(request.body);
+      const voice = findTtsVoiceByName(payload.voiceName);
+      if (!voice) {
+        return reply.code(400).send({
+          message: `Voice ${payload.voiceName} tidak tersedia pada katalog Gemini.`
+        });
+      }
+      const settings = await options.settingsStore.get();
+      const sampleText =
+        payload.text ||
+        "Ini contoh voice over excited untuk video affiliate. Cek detail produk di komentar dan deskripsi.";
+      const audio = await options.speechGenerator.generateSpeech({
+        model: settings.ttsModel,
+        text: sampleText,
+        voiceName: voice.voiceName,
+        speechRate: payload.speechRate
+      });
+
+      const previewDir = path.join(OUTPUTS_DIR, "_voice_previews");
+      await mkdir(previewDir, { recursive: true });
+      const filename = `${Date.now()}-${voice.voiceName}-${nanoid(5)}.wav`;
+      const outputPath = path.join(previewDir, filename);
+      await writeWav24kMono(audio.data, audio.mimeType, outputPath, payload.speechRate);
+
+      return reply.send({
+        voiceName: voice.voiceName,
+        previewPath: `/outputs/_voice_previews/${filename}`
+      });
+    } catch (error) {
+      return reply.code(400).send({
+        message: "Gagal membuat preview voice.",
         error: (error as { message?: string })?.message
       });
     }
@@ -359,6 +430,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     let styleIdRaw = "";
     let sourceTypeRaw = "";
     let editSessionId = "";
+    let voiceNameRaw = "";
+    let voiceGenderRaw = "";
+    let speechRateRaw = "";
     let uploadedOriginalName = "";
     let videoPath = "";
     let videoMimeType = "video/mp4";
@@ -393,6 +467,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }
       if (part.type === "field" && part.fieldname === "editSessionId") {
         editSessionId = String(part.value || "").trim();
+      }
+      if (part.type === "field" && part.fieldname === "voiceName") {
+        voiceNameRaw = String(part.value || "").trim();
+      }
+      if (part.type === "field" && part.fieldname === "voiceGender") {
+        voiceGenderRaw = String(part.value || "").trim();
+      }
+      if (part.type === "field" && part.fieldname === "speechRate") {
+        speechRateRaw = String(part.value || "").trim();
       }
       if (part.type === "file") {
         part.file.resume();
@@ -450,6 +533,50 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         return reply.code(400).send({
           message: `Style ${selectedStyleId} tidak aktif di settings.`
         });
+      }
+
+      let selectedVoiceName = selectedStyle.voiceName;
+      if (voiceNameRaw) {
+        const voice = findTtsVoiceByName(voiceNameRaw);
+        if (!voice) {
+          if (uploadDir) {
+            await rm(uploadDir, { recursive: true, force: true });
+          }
+          return reply.code(400).send({
+            message: `Voice ${voiceNameRaw} tidak tersedia pada katalog Gemini.`
+          });
+        }
+        selectedVoiceName = voice.voiceName;
+      }
+
+      let selectedVoiceGender = findTtsVoiceByName(selectedVoiceName)?.gender;
+      if (voiceGenderRaw) {
+        try {
+          selectedVoiceGender = parseVoiceGender(voiceGenderRaw);
+        } catch (error) {
+          if (uploadDir) {
+            await rm(uploadDir, { recursive: true, force: true });
+          }
+          return reply.code(400).send({
+            message: "voiceGender tidak valid.",
+            error: (error as { message?: string })?.message
+          });
+        }
+      }
+
+      let selectedSpeechRate = selectedStyle.speechRate;
+      if (speechRateRaw) {
+        try {
+          selectedSpeechRate = parseSpeechRate(speechRateRaw);
+        } catch (error) {
+          if (uploadDir) {
+            await rm(uploadDir, { recursive: true, force: true });
+          }
+          return reply.code(400).send({
+            message: "speechRate tidak valid (range 0.7 - 1.3).",
+            error: (error as { message?: string })?.message
+          });
+        }
       }
 
       let chosenVideoPath = videoPath;
@@ -510,6 +637,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         sourceType,
         editSessionId: chosenEditSessionId,
         sourceVideoLabel: chosenVideoLabel,
+        voiceName: selectedVoiceName,
+        voiceGender: selectedVoiceGender,
+        speechRate: selectedSpeechRate,
         videoPath: chosenVideoPath,
         videoMimeType: chosenVideoMime,
         videoDurationSec: durationSec,

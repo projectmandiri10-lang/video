@@ -246,15 +246,15 @@ export class JobProcessor implements IJobProcessor {
         const audio = await this.gemini.generateSpeech({
           model: settings.ttsModel,
           text: scriptText,
-          voiceName: styleConfig.voiceName,
-          speechRate: styleConfig.speechRate
+          voiceName: job.voiceName || styleConfig.voiceName,
+          speechRate: job.speechRate ?? styleConfig.speechRate
         });
         const wavPath = path.join(outputDir, `${styleId}.wav`);
         await writeWav24kMono(
           audio.data,
           audio.mimeType,
           wavPath,
-          styleConfig.speechRate
+          job.speechRate ?? styleConfig.speechRate
         );
         const mp4NoSubtitlePath = path.join(outputDir, `${styleId}-nosub.mp4`);
         const mp4Path = path.join(outputDir, `${styleId}.mp4`);

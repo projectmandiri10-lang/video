@@ -182,6 +182,14 @@ export function JobsPage() {
               {selected.editSessionId ? ` (${selected.editSessionId})` : ""}
             </p>
             <p>
+              <strong>Voice TTS:</strong>{" "}
+              {selected.voiceName
+                ? `${selected.voiceName} (${selected.voiceGender || "neutral"}, speed ${(
+                    selected.speechRate ?? 1
+                  ).toFixed(2)})`
+                : "Default style"}
+            </p>
+            <p>
               <strong>Affiliate Link:</strong>{" "}
               {selected.affiliateLink ? (
                 <span>{selected.affiliateLink}</span>

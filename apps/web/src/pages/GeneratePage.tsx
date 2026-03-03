@@ -3,18 +3,23 @@ import {
   createEditorSession,
   createJob,
   deleteEditorSession,
+  fetchTtsVoices,
   fetchSettings,
+  previewTtsVoice,
   renderEditorPreview,
+  toAbsoluteOutputUrl,
   updateEditorTimeline,
-  uploadEditorClips,
-  toAbsoluteOutputUrl
+  uploadEditorClips
 } from "../api";
 import type {
   AppSettings,
+  ExcitedVoicePreset,
   EditSessionRecord,
   EditTimelineItem,
   StyleId,
-  VideoSourceType
+  TtsVoiceOption,
+  VideoSourceType,
+  VoiceGender
 } from "../types";
 
 const STYLE_TITLE: Record<StyleId, string> = {
@@ -75,6 +80,20 @@ export function GeneratePage() {
   const [error, setError] = useState<string>("");
   const [editorMessage, setEditorMessage] = useState<string>("");
   const [editorError, setEditorError] = useState<string>("");
+  const [ttsVoices, setTtsVoices] = useState<TtsVoiceOption[]>([]);
+  const [excitedPresets, setExcitedPresets] = useState<ExcitedVoicePreset[]>([]);
+  const [voiceLoading, setVoiceLoading] = useState(true);
+  const [selectedVoiceGender, setSelectedVoiceGender] = useState<VoiceGender>("female");
+  const [selectedExcitedPresetId, setSelectedExcitedPresetId] = useState("");
+  const [selectedVoiceName, setSelectedVoiceName] = useState("");
+  const [selectedSpeechRate, setSelectedSpeechRate] = useState(1);
+  const [previewText, setPreviewText] = useState(
+    "Promo ini cocok buat kamu yang mau hasil cepat tapi tetap hemat."
+  );
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState("");
+  const [voiceMessage, setVoiceMessage] = useState("");
+  const [voiceError, setVoiceError] = useState("");
+  const [previewingVoice, setPreviewingVoice] = useState(false);
 
   const initEditorSession = async (previousSessionId?: string) => {
     setEditorLoading(true);
@@ -104,11 +123,12 @@ export function GeneratePage() {
 
   useEffect(() => {
     let mounted = true;
-    fetchSettings()
-      .then((settings) => {
+    Promise.all([fetchSettings(), fetchTtsVoices()])
+      .then(([settings, voiceData]) => {
         if (!mounted) {
           return;
         }
+
         const activeStyles = settings.styles.filter((style) => style.enabled);
         setEnabledStyles(activeStyles);
         setSelectedStyleId((current) => {
@@ -117,6 +137,21 @@ export function GeneratePage() {
           }
           return activeStyles[0]?.styleId ?? "";
         });
+
+        setTtsVoices(voiceData.voices);
+        setExcitedPresets(voiceData.excitedPresets);
+
+        const defaultPreset = voiceData.excitedPresets.find(
+          (preset) => preset.gender === "female"
+        );
+        if (defaultPreset) {
+          setSelectedVoiceGender(defaultPreset.gender);
+          setSelectedExcitedPresetId(defaultPreset.presetId);
+          setSelectedVoiceName(defaultPreset.voiceName);
+        } else if (voiceData.voices[0]) {
+          setSelectedVoiceName(voiceData.voices[0].voiceName);
+          setSelectedVoiceGender(voiceData.voices[0].gender);
+        }
       })
       .catch((loadError) => {
         if (!mounted) {
@@ -127,6 +162,7 @@ export function GeneratePage() {
       .finally(() => {
         if (mounted) {
           setSettingsLoading(false);
+          setVoiceLoading(false);
         }
       });
 
@@ -140,6 +176,37 @@ export function GeneratePage() {
     () => new Map(editorSession?.clips.map((clip) => [clip.clipId, clip]) || []),
     [editorSession?.clips]
   );
+  const voicesByGender = useMemo(() => {
+    const filtered = ttsVoices.filter((voice) => voice.gender === selectedVoiceGender);
+    return filtered.length ? filtered : ttsVoices;
+  }, [ttsVoices, selectedVoiceGender]);
+  const excitedByGender = useMemo(
+    () => excitedPresets.filter((preset) => preset.gender === selectedVoiceGender),
+    [excitedPresets, selectedVoiceGender]
+  );
+  const selectedVoice = useMemo(
+    () => ttsVoices.find((voice) => voice.voiceName === selectedVoiceName),
+    [ttsVoices, selectedVoiceName]
+  );
+
+  useEffect(() => {
+    if (!ttsVoices.length) {
+      return;
+    }
+
+    const isCurrentVoiceValid = voicesByGender.some(
+      (voice) => voice.voiceName === selectedVoiceName
+    );
+    if (!isCurrentVoiceValid) {
+      const preset = excitedByGender[0];
+      if (preset) {
+        setSelectedExcitedPresetId(preset.presetId);
+        setSelectedVoiceName(preset.voiceName);
+      } else if (voicesByGender[0]) {
+        setSelectedVoiceName(voicesByGender[0].voiceName);
+      }
+    }
+  }, [excitedByGender, selectedVoiceName, ttsVoices, voicesByGender]);
 
   const previewUrl = editorSession?.previewPublicPath
     ? toAbsoluteOutputUrl(editorSession.previewPublicPath)
@@ -153,7 +220,9 @@ export function GeneratePage() {
 
   const isGenerateDisabled =
     loading ||
+    voiceLoading ||
     !selectedStyleId ||
+    !selectedVoiceName ||
     !title.trim() ||
     !description.trim() ||
     !affiliateLink.trim() ||
@@ -293,6 +362,54 @@ export function GeneratePage() {
     }
   };
 
+  const onVoiceGenderChange = (gender: VoiceGender) => {
+    setSelectedVoiceGender(gender);
+    const firstPreset = excitedPresets.find((preset) => preset.gender === gender);
+    if (firstPreset) {
+      setSelectedExcitedPresetId(firstPreset.presetId);
+      setSelectedVoiceName(firstPreset.voiceName);
+      return;
+    }
+    const firstVoice = ttsVoices.find((voice) => voice.gender === gender);
+    if (firstVoice) {
+      setSelectedVoiceName(firstVoice.voiceName);
+    }
+  };
+
+  const onExcitedPresetChange = (presetId: string) => {
+    setSelectedExcitedPresetId(presetId);
+    const preset = excitedPresets.find((item) => item.presetId === presetId);
+    if (preset) {
+      setSelectedVoiceName(preset.voiceName);
+      setSelectedVoiceGender(preset.gender);
+    }
+  };
+
+  const onReviewVoice = async () => {
+    if (!selectedVoiceName) {
+      setVoiceError("Pilih voice terlebih dahulu.");
+      return;
+    }
+    setVoiceError("");
+    setVoiceMessage("");
+    setPreviewingVoice(true);
+    try {
+      const preview = await previewTtsVoice({
+        voiceName: selectedVoiceName,
+        speechRate: selectedSpeechRate,
+        text: previewText.trim() || undefined
+      });
+      setVoicePreviewUrl(
+        `${toAbsoluteOutputUrl(preview.previewPath)}?t=${Date.now().toString()}`
+      );
+      setVoiceMessage("Preview suara berhasil dibuat.");
+    } catch (previewError) {
+      setVoiceError((previewError as Error).message);
+    } finally {
+      setPreviewingVoice(false);
+    }
+  };
+
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
@@ -305,6 +422,14 @@ export function GeneratePage() {
 
     if (!title.trim() || !description.trim() || !affiliateLink.trim()) {
       setError("Judul, deskripsi, affiliate link, dan style wajib diisi.");
+      return;
+    }
+    if (!selectedVoiceName) {
+      setError("Pilih voice over TTS terlebih dahulu.");
+      return;
+    }
+    if (selectedSpeechRate < 0.7 || selectedSpeechRate > 1.3) {
+      setError("Speech rate wajib di rentang 0.7 sampai 1.3.");
       return;
     }
 
@@ -329,6 +454,9 @@ export function GeneratePage() {
         sourceType,
         video: sourceType === "upload" ? video || undefined : undefined,
         editSessionId: sourceType === "editing" ? editorSession?.sessionId : undefined,
+        voiceName: selectedVoiceName,
+        voiceGender: selectedVoice?.gender || selectedVoiceGender,
+        speechRate: selectedSpeechRate,
         title: title.trim(),
         description: description.trim(),
         affiliateLink: affiliateLink.trim(),
@@ -553,6 +681,101 @@ export function GeneratePage() {
                   </label>
                 ))}
               </div>
+            )}
+          </fieldset>
+          <fieldset className="style-picker">
+            <legend>TTS Voice Gemini</legend>
+            {voiceLoading && <p className="small">Memuat katalog voice Gemini...</p>}
+            {!voiceLoading && !ttsVoices.length && (
+              <p className="err-inline">Katalog voice tidak tersedia.</p>
+            )}
+            {!voiceLoading && ttsVoices.length > 0 && (
+              <>
+                <div className="style-options">
+                  <label>
+                    Gender
+                    <select
+                      value={selectedVoiceGender}
+                      onChange={(event) =>
+                        onVoiceGenderChange(event.target.value as VoiceGender)
+                      }
+                    >
+                      <option value="female">Wanita</option>
+                      <option value="male">Pria</option>
+                      <option value="neutral">Netral</option>
+                    </select>
+                  </label>
+                  <label>
+                    Versi Excited
+                    <select
+                      value={selectedExcitedPresetId}
+                      onChange={(event) => onExcitedPresetChange(event.target.value)}
+                    >
+                      {!excitedByGender.length && <option value="">Tidak ada preset excited</option>}
+                      {excitedByGender.map((preset) => (
+                        <option key={preset.presetId} value={preset.presetId}>
+                          {preset.label} ({preset.voiceName})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Nama Voice Over
+                    <select
+                      value={selectedVoiceName}
+                      onChange={(event) => {
+                        const nextVoice = event.target.value;
+                        setSelectedVoiceName(nextVoice);
+                        const matchedPreset = excitedByGender.find(
+                          (preset) => preset.voiceName === nextVoice
+                        );
+                        setSelectedExcitedPresetId(matchedPreset?.presetId || "");
+                      }}
+                    >
+                      {voicesByGender.map((voice) => (
+                        <option key={voice.voiceName} value={voice.voiceName}>
+                          {voice.label} - {voice.tone}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Speech Rate
+                    <input
+                      type="number"
+                      min={0.7}
+                      max={1.3}
+                      step={0.05}
+                      value={selectedSpeechRate}
+                      onChange={(event) => setSelectedSpeechRate(Number(event.target.value))}
+                    />
+                  </label>
+                </div>
+                {selectedVoice && (
+                  <p className="small">
+                    Voice aktif: <strong>{selectedVoice.label}</strong> ({selectedVoice.gender}) -
+                    tone {selectedVoice.tone}
+                  </p>
+                )}
+                <label>
+                  Teks Review Suara
+                  <textarea
+                    rows={2}
+                    value={previewText}
+                    onChange={(event) => setPreviewText(event.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void onReviewVoice()}
+                  disabled={previewingVoice || !selectedVoiceName}
+                >
+                  {previewingVoice ? "Membuat preview..." : "Review Suara"}
+                </button>
+                {voicePreviewUrl && <audio controls src={voicePreviewUrl} />}
+                {voiceMessage && <p className="ok-text">{voiceMessage}</p>}
+                {voiceError && <p className="err-text">{voiceError}</p>}
+              </>
             )}
           </fieldset>
           <label>

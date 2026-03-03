@@ -86,6 +86,7 @@ label {
 
 input,
 textarea,
+select,
 button {
   border: 1px solid var(--line);
   border-radius: 8px;

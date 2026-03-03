@@ -4,7 +4,8 @@ import type {
   AppSettings,
   EditTimelineItem,
   StyleId,
-  VideoSourceType
+  VideoSourceType,
+  VoiceGender
 } from "./types.js";
 
 const styleIdSchema = z.enum(STYLE_ORDER);
@@ -39,6 +40,8 @@ export const retrySchema = z.object({
 });
 
 const sourceTypeSchema = z.enum(["upload", "editing"]);
+const voiceGenderSchema = z.enum(["female", "male", "neutral"]);
+const speechRateSchema = z.number().min(0.7).max(1.3);
 
 export const openLocationSchema = z.object({
   styleId: styleIdSchema
@@ -52,6 +55,12 @@ export const timelineItemSchema = z.object({
 
 export const updateTimelineSchema = z.object({
   timeline: z.array(timelineItemSchema).min(1)
+});
+
+const ttsPreviewSchema = z.object({
+  voiceName: z.string().trim().min(1),
+  speechRate: speechRateSchema.optional(),
+  text: z.string().trim().min(1).max(220).optional()
 });
 
 export function parseSettings(input: unknown): AppSettings {
@@ -77,4 +86,26 @@ export function parseVideoSourceType(input: unknown): VideoSourceType {
 export function parseTimelineItems(input: unknown): EditTimelineItem[] {
   const parsed = updateTimelineSchema.parse(input);
   return parsed.timeline;
+}
+
+export function parseVoiceGender(input: unknown): VoiceGender {
+  return voiceGenderSchema.parse(input);
+}
+
+export function parseSpeechRate(input: unknown): number {
+  const numeric = typeof input === "number" ? input : Number(input);
+  return speechRateSchema.parse(numeric);
+}
+
+export function parseTtsPreviewInput(input: unknown): {
+  voiceName: string;
+  speechRate: number;
+  text?: string;
+} {
+  const parsed = ttsPreviewSchema.parse(input);
+  return {
+    voiceName: parsed.voiceName,
+    speechRate: parsed.speechRate ?? 1,
+    text: parsed.text
+  };
 }

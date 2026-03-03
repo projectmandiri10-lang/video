@@ -27,7 +27,8 @@ async function bootstrap(): Promise<void> {
     settingsStore,
     jobsStore,
     editorService,
-    processor
+    processor,
+    speechGenerator: gemini
   });
 
   await app.listen({

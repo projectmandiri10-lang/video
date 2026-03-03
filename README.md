@@ -4,6 +4,7 @@ Aplikasi lokal untuk otomatisasi:
 - input: `video + judul + deskripsi + affiliate link`
 - output per style: `.srt`, `.wav` (24kHz mono), `.mp4` final (voice-over + subtitle burn-in, audio asli source dimute), dan `caption + hashtags` siap upload Facebook Reels (juga tersimpan sebagai file `.txt`)
 - style default: `evergreen`, `soft_selling`, `hard_selling`, `problem_solution`
+- pilihan voice TTS Gemini (termasuk preset `Excited` pria/wanita) dipilih langsung di halaman `Generate`
 
 ## Stack
 - Frontend: React + Vite + TypeScript
@@ -63,6 +64,8 @@ npm run start
 - `GET /api/jobs/:jobId`
 - `POST /api/jobs/:jobId/retry` body `{ "styleId": "evergreen" | "soft_selling" | "hard_selling" | "problem_solution" }`
 - `POST /api/jobs/:jobId/open-location` body `{ "styleId": "evergreen" | "soft_selling" | "hard_selling" | "problem_solution" }`
+- `GET /api/tts/voices`
+- `POST /api/tts/preview` body `{ "voiceName": "...", "speechRate": 1.0, "text": "..." }`
 - `POST /api/editor/session`
 - `GET /api/editor/:sessionId`
 - `POST /api/editor/:sessionId/clips`
@@ -80,6 +83,11 @@ npm run start
 - Halaman `Generate` punya 2 source:
   - `Editing`: editor multi-clip (trim, urutkan, render preview)
   - `Upload`: upload video langsung
+- Halaman `Generate` juga menyediakan:
+  - dropdown gender voice (`Wanita/Pria/Netral`)
+  - dropdown versi `Excited` (V1-V3)
+  - dropdown nama voice resmi Gemini
+  - review suara (preview audio) sebelum generate
 - Clip timeline wajib durasi minimal 5 detik per clip.
 - Tab `Jobs` menampilkan caption final siap copy serta tombol copy affiliate link.
 

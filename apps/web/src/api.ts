@@ -1,9 +1,11 @@
 import type {
   AppSettings,
+  ExcitedVoicePreset,
   EditSessionRecord,
   EditTimelineItem,
   JobRecord,
   StyleId,
+  TtsVoiceOption,
   VideoSourceType
 } from "./types";
 
@@ -50,6 +52,9 @@ export async function createJob(input: {
   sourceType: VideoSourceType;
   video?: File;
   editSessionId?: string;
+  voiceName: string;
+  voiceGender?: "female" | "male" | "neutral";
+  speechRate: number;
   title: string;
   description: string;
   affiliateLink: string;
@@ -62,6 +67,11 @@ export async function createJob(input: {
   if (input.editSessionId) {
     form.append("editSessionId", input.editSessionId);
   }
+  form.append("voiceName", input.voiceName);
+  if (input.voiceGender) {
+    form.append("voiceGender", input.voiceGender);
+  }
+  form.append("speechRate", String(input.speechRate));
   form.append("sourceType", input.sourceType);
   form.append("title", input.title);
   form.append("description", input.description);
@@ -93,6 +103,32 @@ export async function retryStyle(jobId: string, styleId: StyleId): Promise<void>
     body: JSON.stringify({ styleId })
   });
   await parseResponse<{ ok: boolean }>(res);
+}
+
+export async function fetchTtsVoices(): Promise<{
+  voices: TtsVoiceOption[];
+  excitedPresets: ExcitedVoicePreset[];
+}> {
+  const res = await fetch(`${API_BASE}/api/tts/voices`);
+  return parseResponse<{
+    voices: TtsVoiceOption[];
+    excitedPresets: ExcitedVoicePreset[];
+  }>(res);
+}
+
+export async function previewTtsVoice(input: {
+  voiceName: string;
+  speechRate: number;
+  text?: string;
+}): Promise<{ voiceName: string; previewPath: string }> {
+  const res = await fetch(`${API_BASE}/api/tts/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  return parseResponse<{ voiceName: string; previewPath: string }>(res);
 }
 
 export async function openStyleOutputLocation(

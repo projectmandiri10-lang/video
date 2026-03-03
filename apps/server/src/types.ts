@@ -5,6 +5,7 @@ export type StyleId =
   | "problem_solution";
 
 export type VideoSourceType = "upload" | "editing";
+export type VoiceGender = "female" | "male" | "neutral";
 
 export type StyleStatus = "pending" | "running" | "done" | "failed" | "interrupted";
 
@@ -58,6 +59,9 @@ export interface JobRecord {
   sourceType: VideoSourceType;
   editSessionId?: string;
   sourceVideoLabel?: string;
+  voiceName?: string;
+  voiceGender?: VoiceGender;
+  speechRate?: number;
   videoPath: string;
   videoMimeType: string;
   videoDurationSec: number;
@@ -81,6 +85,21 @@ export interface GenerateSpeechInput {
   text: string;
   voiceName: string;
   speechRate: number;
+}
+
+export interface TtsVoiceOption {
+  voiceName: string;
+  label: string;
+  tone: string;
+  gender: VoiceGender;
+}
+
+export interface ExcitedVoicePreset {
+  presetId: string;
+  label: string;
+  version: string;
+  gender: "female" | "male";
+  voiceName: string;
 }
 
 export interface SocialMetadata {
