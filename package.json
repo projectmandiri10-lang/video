@@ -1,0 +1,23 @@
+{
+  "name": "gemini-affiliate-automation",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm:dev -w apps/server\" \"npm:dev -w apps/web\"",
+    "build": "npm run build -w apps/server && npm run build -w apps/web",
+    "test": "npm run test -w apps/server",
+    "start": "npm run start -w apps/server"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "concurrently": "^9.2.1",
+    "esbuild": "^0.27.3"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  }
+}
