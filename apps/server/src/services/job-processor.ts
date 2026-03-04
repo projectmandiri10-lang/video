@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import type { AppSettings, JobRecord, StyleId, StyleRun } from "../types.js";
@@ -8,19 +8,10 @@ import { buildScriptPrompt } from "./prompt-builder.js";
 import { GeminiService } from "./gemini-service.js";
 import { OUTPUTS_DIR } from "../utils/paths.js";
 import { buildSrt } from "../utils/srt.js";
-import {
-  burnSubtitleToVideo,
-  combineVideoWithVoiceOver,
-  writeWav24kMono
-} from "../utils/audio.js";
+import { combineVideoWithVoiceOver, writeWav24kMono } from "../utils/audio.js";
 import { STYLE_LABELS } from "../constants.js";
 import { ensureSocialMetadata } from "../utils/model-output.js";
-import {
-  classifyGeminiError,
-  getAutoRetryDelaySec,
-  MAX_AUTO_RETRY,
-  type GeminiErrorCode
-} from "../utils/gemini-retry.js";
+import { sanitizeWindowsFilenameBase } from "../utils/filename.js";
 
 interface QueueItem {
   jobId: string;
@@ -29,15 +20,6 @@ interface QueueItem {
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-function buildTitleVideoFilename(title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-  return slug || "video";
 }
 
 function findStyleConfig(settings: AppSettings, styleId: StyleId) {
@@ -66,11 +48,6 @@ function fallbackHashtags(title: string, styleId: StyleId): string[] {
 }
 
 function parseGeminiQuotaMessage(message: string): string | undefined {
-  const lowered = message.toLowerCase();
-  if (lowered.includes('"status":"unavailable"') || /\b503\b/.test(lowered)) {
-    return "Model Gemini sedang high demand (503 UNAVAILABLE). Coba retry job ini lagi dalam 1-5 menit.";
-  }
-
   try {
     const payload = JSON.parse(message) as {
       error?: {
@@ -82,9 +59,6 @@ function parseGeminiQuotaMessage(message: string): string | undefined {
     };
     const status = payload.error?.status || "";
     const code = payload.error?.code || 0;
-    if (status === "UNAVAILABLE" || code === 503) {
-      return "Model Gemini sedang high demand (503 UNAVAILABLE). Coba retry job ini lagi dalam 1-5 menit.";
-    }
     if (!(status === "RESOURCE_EXHAUSTED" || code === 429)) {
       return undefined;
     }
@@ -110,7 +84,6 @@ export interface IJobProcessor {
 
 export class JobProcessor implements IJobProcessor {
   private readonly queue: QueueItem[] = [];
-  private readonly retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private running = false;
   private idleResolvers: Array<() => void> = [];
 
@@ -124,26 +97,6 @@ export class JobProcessor implements IJobProcessor {
   public enqueue(jobId: string, styleIds?: StyleId[]): void {
     this.queue.push({ jobId, styleIds });
     void this.consume();
-  }
-
-  public async restoreScheduledRetries(): Promise<void> {
-    const jobs = await this.jobsStore.list();
-    for (const job of jobs) {
-      for (const style of job.styles) {
-        if (style.status !== "pending" || !style.nextRetryAt) {
-          continue;
-        }
-        const retryAtMs = Date.parse(style.nextRetryAt);
-        if (!Number.isFinite(retryAtMs)) {
-          continue;
-        }
-        if (retryAtMs <= Date.now()) {
-          this.enqueue(job.jobId, [style.styleId]);
-          continue;
-        }
-        this.scheduleRetry(job.jobId, style.styleId, style.nextRetryAt);
-      }
-    }
   }
 
   public async whenIdle(): Promise<void> {
@@ -162,41 +115,6 @@ export class JobProcessor implements IJobProcessor {
     for (const resolve of this.idleResolvers.splice(0)) {
       resolve();
     }
-  }
-
-  private retryKey(jobId: string, styleId: StyleId): string {
-    return `${jobId}:${styleId}`;
-  }
-
-  private clearRetryTimer(jobId: string, styleId: StyleId): void {
-    const key = this.retryKey(jobId, styleId);
-    const timer = this.retryTimers.get(key);
-    if (timer) {
-      clearTimeout(timer);
-      this.retryTimers.delete(key);
-    }
-  }
-
-  private scheduleRetry(jobId: string, styleId: StyleId, nextRetryAt: string): void {
-    this.clearRetryTimer(jobId, styleId);
-    const key = this.retryKey(jobId, styleId);
-    const retryAtMs = Date.parse(nextRetryAt);
-    if (!Number.isFinite(retryAtMs)) {
-      return;
-    }
-    const delayMs = Math.max(0, retryAtMs - Date.now());
-    if (delayMs === 0) {
-      this.enqueue(jobId, [styleId]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      this.retryTimers.delete(key);
-      this.enqueue(jobId, [styleId]);
-    }, delayMs);
-    if (typeof timer.unref === "function") {
-      timer.unref();
-    }
-    this.retryTimers.set(key, timer);
   }
 
   private async consume(): Promise<void> {
@@ -240,20 +158,12 @@ export class JobProcessor implements IJobProcessor {
     try {
       uploadedVideo = await this.gemini.uploadVideo(job.videoPath, job.videoMimeType);
     } catch (error) {
-      const errorCode = classifyGeminiError(error);
-      if (errorCode === "UNAVAILABLE") {
-        for (const styleId of selectedStyleIds) {
-          await this.scheduleUnavailableRetry(item.jobId, styleId);
-        }
-        return;
-      }
       const message = this.toErrorMessage(error);
-      await this.markStylesFailed(item.jobId, selectedStyleIds, message, errorCode);
+      await this.markStylesFailed(item.jobId, selectedStyleIds, message);
       return;
     }
 
     for (const styleId of selectedStyleIds) {
-      this.clearRetryTimer(item.jobId, styleId);
       const styleConfig = findStyleConfig(settings, styleId);
       if (!styleConfig?.enabled) {
         await this.jobsStore.update(item.jobId, (current) => ({
@@ -330,30 +240,24 @@ export class JobProcessor implements IJobProcessor {
         const captionFileContent = `${captionFileParts.join("\n\n")}\n`;
         await writeFile(captionPath, captionFileContent, "utf8");
 
+        const voiceName = job.voiceName || styleConfig.voiceName;
+        const speechRate = job.speechRate ?? styleConfig.speechRate;
         const audio = await this.gemini.generateSpeech({
           model: settings.ttsModel,
           text: scriptText,
-          voiceName: job.voiceName || styleConfig.voiceName,
-          speechRate: job.speechRate ?? styleConfig.speechRate
+          voiceName,
+          speechRate
         });
         const wavPath = path.join(outputDir, `${styleId}.wav`);
-        await writeWav24kMono(
-          audio.data,
-          audio.mimeType,
-          wavPath,
-          job.speechRate ?? styleConfig.speechRate
-        );
-        const videoBaseName = `${buildTitleVideoFilename(job.title)}-${styleId}`;
-        const mp4NoSubtitlePath = path.join(outputDir, `${videoBaseName}-nosub.mp4`);
-        const mp4Path = path.join(outputDir, `${videoBaseName}.mp4`);
+        await writeWav24kMono(audio.data, audio.mimeType, wavPath, speechRate);
+        const mp4Filename = `${sanitizeWindowsFilenameBase(job.title)}.mp4`;
+        const mp4Path = path.join(outputDir, mp4Filename);
         await combineVideoWithVoiceOver(
           job.videoPath,
           wavPath,
-          mp4NoSubtitlePath,
+          mp4Path,
           job.videoDurationSec
         );
-        await burnSubtitleToVideo(mp4NoSubtitlePath, srtPath, mp4Path);
-        await rm(mp4NoSubtitlePath, { force: true });
 
         await this.jobsStore.update(item.jobId, (current) => ({
           ...current,
@@ -364,11 +268,9 @@ export class JobProcessor implements IJobProcessor {
                   ...style,
                   status: "done",
                   errorMessage: undefined,
-                  nextRetryAt: undefined,
-                  lastErrorCode: undefined,
                   srtPath: `/outputs/${current.jobId}/${styleId}.srt`,
                   wavPath: `/outputs/${current.jobId}/${styleId}.wav`,
-                  mp4Path: `/outputs/${current.jobId}/${videoBaseName}.mp4`,
+                  mp4Path: `/outputs/${current.jobId}/${encodeURIComponent(mp4Filename)}`,
                   captionPath: `/outputs/${current.jobId}/${styleId}-caption.txt`,
                   captionText: socialMetadata.caption,
                   hashtags: socialMetadata.hashtags,
@@ -382,22 +284,7 @@ export class JobProcessor implements IJobProcessor {
           `Style ${STYLE_LABELS[styleId]} selesai.`
         );
       } catch (error) {
-        const errorCode = classifyGeminiError(error);
-        if (errorCode === "UNAVAILABLE") {
-          await this.scheduleUnavailableRetry(item.jobId, styleId);
-          this.logger.warn(
-            { err: error, jobId: item.jobId, styleId },
-            "Style pending auto-retry karena model high demand."
-          );
-          continue;
-        }
-        await this.updateStyle(
-          item.jobId,
-          styleId,
-          "failed",
-          this.toErrorMessage(error),
-          errorCode
-        );
+        await this.updateStyle(item.jobId, styleId, "failed", this.toErrorMessage(error));
         this.logger.error(
           { err: error, jobId: item.jobId, styleId },
           "Style processing gagal."
@@ -415,8 +302,7 @@ export class JobProcessor implements IJobProcessor {
   private async markStylesFailed(
     jobId: string,
     styleIds: StyleId[],
-    message: string,
-    errorCode: GeminiErrorCode = "OTHER"
+    message: string
   ): Promise<void> {
     await this.jobsStore.update(jobId, (current) => {
       const nextStyles = current.styles.map<StyleRun>((style) =>
@@ -425,8 +311,6 @@ export class JobProcessor implements IJobProcessor {
               ...style,
               status: "failed",
               errorMessage: message,
-              nextRetryAt: undefined,
-              lastErrorCode: errorCode,
               updatedAt: nowIso()
             }
           : style
@@ -440,87 +324,22 @@ export class JobProcessor implements IJobProcessor {
     });
   }
 
-  private async scheduleUnavailableRetry(jobId: string, styleId: StyleId): Promise<void> {
-    let nextRetryAt: string | undefined;
-    await this.jobsStore.update(jobId, (current) => {
-      const nextStyles = current.styles.map<StyleRun>((style) => {
-        if (style.styleId !== styleId) {
-          return style;
-        }
-        const retryCount = style.retryCount ?? 0;
-        if (retryCount >= MAX_AUTO_RETRY) {
-          return {
-            ...style,
-            status: "failed",
-            errorMessage: `Model Gemini sedang high demand. Auto retry sudah mencapai batas ${MAX_AUTO_RETRY}x, silakan manual retry.`,
-            nextRetryAt: undefined,
-            lastErrorCode: "UNAVAILABLE",
-            updatedAt: nowIso()
-          };
-        }
-
-        const nextRetryCount = retryCount + 1;
-        const delaySec = getAutoRetryDelaySec(nextRetryCount);
-        if (!delaySec) {
-          return {
-            ...style,
-            status: "failed",
-            errorMessage: "Auto retry tidak dapat dijadwalkan. Silakan manual retry.",
-            nextRetryAt: undefined,
-            lastErrorCode: "UNAVAILABLE",
-            updatedAt: nowIso()
-          };
-        }
-        nextRetryAt = new Date(Date.now() + delaySec * 1000).toISOString();
-        return {
-          ...style,
-          status: "pending",
-          retryCount: nextRetryCount,
-          nextRetryAt,
-          lastErrorCode: "UNAVAILABLE",
-          errorMessage: `Model Gemini high demand (503 UNAVAILABLE). Auto retry #${nextRetryCount} pada ${nextRetryAt}.`,
-          updatedAt: nowIso()
-        };
-      });
-      return {
-        ...current,
-        updatedAt: nowIso(),
-        styles: nextStyles,
-        overallStatus: JobsStore.computeOverallStatus(nextStyles)
-      };
-    });
-
-    if (nextRetryAt) {
-      this.scheduleRetry(jobId, styleId, nextRetryAt);
-      return;
-    }
-    this.clearRetryTimer(jobId, styleId);
-  }
-
   private async updateStyle(
     jobId: string,
     styleId: StyleId,
     status: JobRecord["styles"][number]["status"],
-    errorMessage?: string,
-    errorCode: GeminiErrorCode = "OTHER"
+    errorMessage?: string
   ): Promise<void> {
     await this.jobsStore.update(jobId, (current) => {
       const nextStyles = current.styles.map<StyleRun>((style) =>
-        style.styleId !== styleId
-          ? style
-          : {
+        style.styleId === styleId
+          ? {
               ...style,
               status,
               errorMessage,
-              nextRetryAt: status === "pending" ? style.nextRetryAt : undefined,
-              lastErrorCode:
-                status === "failed"
-                  ? errorCode
-                  : status === "pending"
-                    ? style.lastErrorCode
-                    : undefined,
               updatedAt: nowIso()
             }
+          : style
       );
       return {
         ...current,

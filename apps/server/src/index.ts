@@ -2,8 +2,6 @@ import { buildApp } from "./app.js";
 import { loadEnv } from "./config.js";
 import { JobProcessor } from "./services/job-processor.js";
 import { GeminiService } from "./services/gemini-service.js";
-import { EditorService } from "./services/editor-service.js";
-import { EditSessionsStore } from "./stores/edit-sessions-store.js";
 import { JobsStore } from "./stores/jobs-store.js";
 import { SettingsStore } from "./stores/settings-store.js";
 import { logger } from "./utils/logger.js";
@@ -15,19 +13,15 @@ async function bootstrap(): Promise<void> {
 
   const settingsStore = new SettingsStore();
   const jobsStore = new JobsStore();
-  const editSessionsStore = new EditSessionsStore();
-  const editorService = new EditorService(editSessionsStore);
   await jobsStore.markRunningAsInterrupted();
 
   const gemini = new GeminiService(env.geminiApiKey, logger);
   const processor = new JobProcessor(jobsStore, settingsStore, gemini, logger);
-  await processor.restoreScheduledRetries();
   const app = await buildApp({
     logger,
     webOrigin: env.webOrigin,
     settingsStore,
     jobsStore,
-    editorService,
     processor,
     speechGenerator: gemini
   });

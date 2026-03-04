@@ -111,6 +111,28 @@ export function SettingsPage() {
                 Aktif
               </label>
               <label>
+                Voice Name
+                <input
+                  value={style.voiceName}
+                  onChange={(event) =>
+                    onStyleChange(style.styleId, "voiceName", event.target.value)
+                  }
+                />
+              </label>
+              <label>
+                Speech Rate
+                <input
+                  type="number"
+                  step="0.05"
+                  min={0.7}
+                  max={1.3}
+                  value={style.speechRate}
+                  onChange={(event) =>
+                    onStyleChange(style.styleId, "speechRate", Number(event.target.value))
+                  }
+                />
+              </label>
+              <label>
                 Prompt Template
                 <textarea
                   rows={6}
@@ -120,13 +142,6 @@ export function SettingsPage() {
                   }
                 />
               </label>
-              <p className="small">
-                Tip: tulis arahan hook pembuka di kalimat pertama agar 1-2 detik awal lebih
-                menarik.
-              </p>
-              <p className="small">
-                Pengaturan voice dan speech rate sekarang dipilih di halaman Generate.
-              </p>
             </article>
           ))}
         </div>

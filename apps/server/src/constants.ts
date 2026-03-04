@@ -8,19 +8,16 @@ import type {
 export const MAX_HISTORY = 20;
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 export const DEFAULT_PORT = 8787;
-export const EDIT_TARGET_WIDTH = 720;
-export const EDIT_TARGET_HEIGHT = 1280;
-export const MIN_EDIT_CLIP_SECONDS = 5;
 
 const STYLE_PROMPTS: Record<StyleId, string> = {
   evergreen:
-    "Buat naskah voice-over gaya evergreen untuk video affiliate. Wajib buka dengan hook kuat di kalimat pertama. Tekankan manfaat jangka panjang produk, bahasa natural, tidak berlebihan, CTA di akhir (arahkan ke komentar dan deskripsi).",
+    "Buat naskah voice-over gaya evergreen untuk video affiliate. Tekankan manfaat jangka panjang produk, bahasa natural, tidak berlebihan, CTA di akhir (arahkan ke komentar dan deskripsi).",
   soft_selling:
-    "Buat naskah voice-over gaya soft selling. Wajib buka dengan hook kuat di kalimat pertama. Bangun empati, jelaskan problem pengguna, tawarkan produk sebagai solusi halus, CTA di akhir (arahkan ke komentar dan deskripsi).",
+    "Buat naskah voice-over gaya soft selling. Bangun empati, jelaskan problem pengguna, tawarkan produk sebagai solusi halus, CTA di akhir (arahkan ke komentar dan deskripsi).",
   hard_selling:
-    "Buat naskah voice-over gaya hard selling dengan urgency wajar. Wajib buka dengan hook kuat di kalimat pertama. Fokus value, promo, alasan beli sekarang, tetap aman tanpa klaim absolut, CTA di akhir (arahkan ke komentar dan deskripsi).",
+    "Buat naskah voice-over gaya hard selling dengan urgency wajar. Fokus value, promo, alasan beli sekarang, tetap aman tanpa klaim absolut, CTA di akhir (arahkan ke komentar dan deskripsi).",
   problem_solution:
-    "Buat naskah voice-over edukasi problem-solution. Wajib buka dengan hook kuat di kalimat pertama. Awali pain point, jelaskan penyebab singkat, masukkan solusi produk secara praktis, CTA di akhir (arahkan ke komentar dan deskripsi)."
+    "Buat naskah voice-over edukasi problem-solution. Awali pain point, jelaskan penyebab singkat, masukkan solusi produk secara praktis, CTA di akhir (arahkan ke komentar dan deskripsi)."
 };
 
 const STYLE_VOICES: Record<StyleId, string> = {
@@ -70,7 +67,12 @@ export const GEMINI_TTS_VOICES: TtsVoiceOption[] = [
   { voiceName: "Leda", label: "Leda", tone: "Youthful", gender: "female" },
   { voiceName: "Orus", label: "Orus", tone: "Firm", gender: "male" },
   { voiceName: "Aoede", label: "Aoede", tone: "Breezy", gender: "female" },
-  { voiceName: "Callirrhoe", label: "Callirrhoe", tone: "Easy-going", gender: "female" },
+  {
+    voiceName: "Callirrhoe",
+    label: "Callirrhoe",
+    tone: "Easy-going",
+    gender: "female"
+  },
   { voiceName: "Autonoe", label: "Autonoe", tone: "Bright", gender: "female" },
   { voiceName: "Enceladus", label: "Enceladus", tone: "Breathy", gender: "neutral" },
   { voiceName: "Iapetus", label: "Iapetus", tone: "Clear", gender: "male" },
@@ -79,18 +81,43 @@ export const GEMINI_TTS_VOICES: TtsVoiceOption[] = [
   { voiceName: "Despina", label: "Despina", tone: "Smooth", gender: "female" },
   { voiceName: "Erinome", label: "Erinome", tone: "Clear", gender: "female" },
   { voiceName: "Algenib", label: "Algenib", tone: "Gravelly", gender: "male" },
-  { voiceName: "Rasalgethi", label: "Rasalgethi", tone: "Informative", gender: "male" },
+  {
+    voiceName: "Rasalgethi",
+    label: "Rasalgethi",
+    tone: "Informative",
+    gender: "male"
+  },
   { voiceName: "Laomedeia", label: "Laomedeia", tone: "Upbeat", gender: "female" },
   { voiceName: "Achernar", label: "Achernar", tone: "Soft", gender: "female" },
   { voiceName: "Alnilam", label: "Alnilam", tone: "Firm", gender: "male" },
   { voiceName: "Schedar", label: "Schedar", tone: "Even", gender: "male" },
   { voiceName: "Gacrux", label: "Gacrux", tone: "Mature", gender: "male" },
-  { voiceName: "Pulcherrima", label: "Pulcherrima", tone: "Forward", gender: "female" },
+  {
+    voiceName: "Pulcherrima",
+    label: "Pulcherrima",
+    tone: "Forward",
+    gender: "female"
+  },
   { voiceName: "Achird", label: "Achird", tone: "Friendly", gender: "neutral" },
-  { voiceName: "Zubenelgenubi", label: "Zubenelgenubi", tone: "Casual", gender: "neutral" },
-  { voiceName: "Vindemiatrix", label: "Vindemiatrix", tone: "Gentle", gender: "female" },
+  {
+    voiceName: "Zubenelgenubi",
+    label: "Zubenelgenubi",
+    tone: "Casual",
+    gender: "neutral"
+  },
+  {
+    voiceName: "Vindemiatrix",
+    label: "Vindemiatrix",
+    tone: "Gentle",
+    gender: "female"
+  },
   { voiceName: "Sadachbia", label: "Sadachbia", tone: "Lively", gender: "female" },
-  { voiceName: "Sadaltager", label: "Sadaltager", tone: "Knowledgeable", gender: "male" },
+  {
+    voiceName: "Sadaltager",
+    label: "Sadaltager",
+    tone: "Knowledgeable",
+    gender: "male"
+  },
   { voiceName: "Sulafat", label: "Sulafat", tone: "Warm", gender: "female" }
 ];
 

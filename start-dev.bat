@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal
 
 cd /d "%~dp0"
 set "NEED_REPAIR=0"
@@ -30,21 +30,4 @@ if "%NEED_REPAIR%"=="1" (
 )
 
 echo [INFO] Starting server + frontend (dev mode)...
-call :FreePort 8787 backend
-call :FreePort 5173 frontend
 call npm run dev
-exit /b %errorlevel%
-
-:FreePort
-set "PORT=%~1"
-set "LABEL=%~2"
-set "FOUND=0"
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":%PORT% .*LISTENING"') do (
-  set "FOUND=1"
-  echo [WARN] Port %PORT% - !LABEL! sedang dipakai PID %%P. Menutup proses...
-  taskkill /PID %%P /F >nul 2>&1
-)
-if "!FOUND!"=="1" (
-  timeout /t 1 /nobreak >nul
-)
-exit /b 0

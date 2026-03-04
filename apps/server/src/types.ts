@@ -4,7 +4,6 @@ export type StyleId =
   | "hard_selling"
   | "problem_solution";
 
-export type VideoSourceType = "upload" | "editing";
 export type VoiceGender = "female" | "male" | "neutral";
 
 export type StyleStatus = "pending" | "running" | "done" | "failed" | "interrupted";
@@ -40,9 +39,6 @@ export interface StyleRun {
   styleId: StyleId;
   status: StyleStatus;
   errorMessage?: string;
-  retryCount?: number;
-  nextRetryAt?: string;
-  lastErrorCode?: "UNAVAILABLE" | "RESOURCE_EXHAUSTED" | "OTHER";
   srtPath?: string;
   wavPath?: string;
   mp4Path?: string;
@@ -59,11 +55,7 @@ export interface JobRecord {
   title: string;
   description: string;
   affiliateLink?: string;
-  sourceType: VideoSourceType;
-  editSessionId?: string;
-  sourceVideoLabel?: string;
   voiceName?: string;
-  voiceGender?: VoiceGender;
   speechRate?: number;
   videoPath: string;
   videoMimeType: string;
@@ -116,31 +108,4 @@ export interface GenerateSocialMetadataInput {
   description: string;
   styleId: StyleId;
   scriptText: string;
-}
-
-export interface EditClipAsset {
-  clipId: string;
-  originalName: string;
-  mimeType: string;
-  filePath: string;
-  durationSec: number;
-  createdAt: string;
-}
-
-export interface EditTimelineItem {
-  clipId: string;
-  startSec: number;
-  endSec: number;
-}
-
-export interface EditSessionRecord {
-  sessionId: string;
-  createdAt: string;
-  updatedAt: string;
-  clips: EditClipAsset[];
-  timeline: EditTimelineItem[];
-  previewPath?: string;
-  previewDurationSec?: number;
-  targetWidth: number;
-  targetHeight: number;
 }

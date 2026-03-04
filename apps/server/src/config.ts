@@ -3,7 +3,7 @@ import path from "node:path";
 import { ROOT_DIR } from "./utils/paths.js";
 import { DEFAULT_PORT } from "./constants.js";
 
-dotenv.config({ path: path.join(ROOT_DIR, ".env") });
+dotenv.config({ path: path.join(ROOT_DIR, ".env"), override: true });
 
 export interface AppEnv {
   geminiApiKey: string;

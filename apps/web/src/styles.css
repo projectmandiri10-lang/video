@@ -79,7 +79,6 @@ label {
 
 input,
 textarea,
-select,
 button {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -122,29 +121,12 @@ button:hover {
   gap: 8px;
 }
 
-.job-item-wrap {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-}
-
 .job-item {
   text-align: left;
 }
 
-.job-item-wrap.active .job-item {
+.job-item.active {
   border-color: var(--primary);
-}
-
-.danger-btn {
-  border-color: #e8b4b4;
-  color: var(--danger);
-}
-
-.danger-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .small {

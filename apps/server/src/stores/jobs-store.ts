@@ -33,24 +33,6 @@ export class JobsStore {
     return job;
   }
 
-  public async delete(jobId: string): Promise<boolean> {
-    let found = false;
-    await this.file.update(async (jobs) => {
-      const next = jobs.filter((job) => {
-        if (job.jobId === jobId) {
-          found = true;
-          return false;
-        }
-        return true;
-      });
-      if (found) {
-        await this.cleanupJobArtifacts(jobId);
-      }
-      return next;
-    });
-    return found;
-  }
-
   public async update(
     jobId: string,
     updater: (job: JobRecord) => JobRecord

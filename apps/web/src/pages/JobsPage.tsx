@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  deleteJob,
   fetchJobDetail,
   fetchJobs,
   openStyleOutputLocation,
@@ -24,7 +23,6 @@ export function JobsPage() {
   const [loading, setLoading] = useState(false);
   const [copyInfo, setCopyInfo] = useState("");
   const [openingKey, setOpeningKey] = useState("");
-  const [deletingJobId, setDeletingJobId] = useState("");
 
   const refreshJobs = async () => {
     try {
@@ -32,10 +30,7 @@ export function JobsPage() {
       const list = await fetchJobs();
       setJobs(list);
       const firstJob = list[0];
-      if (!firstJob) {
-        setSelectedJobId("");
-        setSelectedJob(null);
-      } else if (!selectedJobId || !list.some((item) => item.jobId === selectedJobId)) {
+      if (!selectedJobId && firstJob) {
         setSelectedJobId(firstJob.jobId);
       }
       setError("");
@@ -52,14 +47,7 @@ export function JobsPage() {
       setSelectedJob(detail);
       setError("");
     } catch (loadError) {
-      const message = (loadError as Error).message;
-      if (message.includes("tidak ditemukan") || message.includes("HTTP 404")) {
-        setSelectedJob(null);
-        const firstJob = jobs[0];
-        setSelectedJobId(firstJob?.jobId || "");
-        return;
-      }
-      setError(message);
+      setError((loadError as Error).message);
     }
   };
 
@@ -100,7 +88,7 @@ export function JobsPage() {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopyInfo("Teks berhasil disalin.");
+      setCopyInfo("Caption siap upload berhasil disalin.");
       setTimeout(() => setCopyInfo(""), 2000);
     } catch (copyError) {
       setError((copyError as Error).message);
@@ -116,53 +104,6 @@ export function JobsPage() {
       setError((openError as Error).message);
     } finally {
       setOpeningKey("");
-    }
-  };
-
-  const isDeleteBlocked = (job: JobRecord): boolean =>
-    job.overallStatus === "running" || job.overallStatus === "queued";
-
-  const formatRetryTime = (iso: string): string => {
-    const parsed = new Date(iso);
-    if (Number.isNaN(parsed.getTime())) {
-      return iso;
-    }
-    return parsed.toLocaleTimeString("id-ID", { hour12: false });
-  };
-
-  const onDeleteJob = async (job: JobRecord) => {
-    if (isDeleteBlocked(job) || deletingJobId) {
-      return;
-    }
-    const confirmed = window.confirm("Hapus job ini beserta file output/upload?");
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setDeletingJobId(job.jobId);
-      await deleteJob(job.jobId);
-      const latestJobs = await fetchJobs();
-      setJobs(latestJobs);
-
-      if (selectedJobId === job.jobId) {
-        const nextSelectedId = latestJobs[0]?.jobId || "";
-        setSelectedJobId(nextSelectedId);
-        if (nextSelectedId) {
-          const nextDetail = await fetchJobDetail(nextSelectedId);
-          setSelectedJob(nextDetail);
-        } else {
-          setSelectedJob(null);
-        }
-      } else if (selectedJobId) {
-        const nextDetail = await fetchJobDetail(selectedJobId);
-        setSelectedJob(nextDetail);
-      }
-      setError("");
-    } catch (deleteError) {
-      setError((deleteError as Error).message);
-    } finally {
-      setDeletingJobId("");
     }
   };
 
@@ -206,46 +147,24 @@ export function JobsPage() {
         </div>
         <div className="job-list">
           {jobs.map((job) => (
-            <div
+            <button
               key={job.jobId}
-              className={`job-item-wrap ${job.jobId === selectedJobId ? "active" : ""}`}
+              className={`job-item ${job.jobId === selectedJobId ? "active" : ""}`}
+              onClick={() => {
+                setSelectedJobId(job.jobId);
+                void refreshDetail(job.jobId);
+              }}
             >
-              <button
-                className="job-item"
-                onClick={() => {
-                  setSelectedJobId(job.jobId);
-                  void refreshDetail(job.jobId);
-                }}
-              >
-                <div>{job.title}</div>
-                <div className="small">#{job.jobId}</div>
-                <StatusBadge status={job.overallStatus} />
-              </button>
-              <button
-                className="danger-btn"
-                disabled={isDeleteBlocked(job) || deletingJobId === job.jobId}
-                onClick={() => void onDeleteJob(job)}
-              >
-                {deletingJobId === job.jobId ? "Deleting..." : "Delete"}
-              </button>
-            </div>
+              <div>{job.title}</div>
+              <div className="small">#{job.jobId}</div>
+              <StatusBadge status={job.overallStatus} />
+            </button>
           ))}
           {!jobs.length && <p>Belum ada job.</p>}
         </div>
       </div>
       <div>
-        <div className="row-head">
-          <h3>Detail Job</h3>
-          {selected && (
-            <button
-              className="danger-btn"
-              disabled={isDeleteBlocked(selected) || deletingJobId === selected.jobId}
-              onClick={() => void onDeleteJob(selected)}
-            >
-              {deletingJobId === selected.jobId ? "Deleting..." : "Delete Job"}
-            </button>
-          )}
-        </div>
+        <h3>Detail Job</h3>
         {!selected && <p>Pilih job untuk melihat detail.</p>}
         {selected && (
           <div className="detail-box">
@@ -259,18 +178,6 @@ export function JobsPage() {
               <strong>Status:</strong> <StatusBadge status={selected.overallStatus} />
             </p>
             <p>
-              <strong>Source:</strong> {selected.sourceType === "editing" ? "Editing" : "Upload"}
-              {selected.editSessionId ? ` (${selected.editSessionId})` : ""}
-            </p>
-            <p>
-              <strong>Voice TTS:</strong>{" "}
-              {selected.voiceName
-                ? `${selected.voiceName} (${selected.voiceGender || "neutral"}, speed ${(
-                    selected.speechRate ?? 1
-                  ).toFixed(2)})`
-                : "Default style"}
-            </p>
-            <p>
               <strong>Affiliate Link:</strong>{" "}
               {selected.affiliateLink ? (
                 <span>{selected.affiliateLink}</span>
@@ -278,11 +185,6 @@ export function JobsPage() {
                 <span className="small">Tidak tersedia</span>
               )}
             </p>
-            {selected.affiliateLink && (
-              <button onClick={() => void copyToClipboard(selected.affiliateLink || "")}>
-                Copy Affiliate Link
-              </button>
-            )}
             <table>
               <thead>
                 <tr>
@@ -298,14 +200,6 @@ export function JobsPage() {
                     <td>{STYLE_LABEL[style.styleId]}</td>
                     <td>
                       <StatusBadge status={style.status} />
-                      {style.status === "pending" && style.nextRetryAt && (
-                        <div className="small">
-                          Auto retry #{style.retryCount ?? 0} pada {formatRetryTime(style.nextRetryAt)}
-                        </div>
-                      )}
-                      {style.lastErrorCode && style.status !== "done" && (
-                        <div className="small">Error code: {style.lastErrorCode}</div>
-                      )}
                       {style.errorMessage && <div className="err-inline">{style.errorMessage}</div>}
                     </td>
                     <td>

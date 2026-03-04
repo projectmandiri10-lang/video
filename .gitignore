@@ -5,10 +5,9 @@ coverage
 .DS_Store
 outputs/*
 uploads/*
-edits/*
 logs/*
-apps/server/.test-runtime/*
 !outputs/.gitkeep
 !uploads/.gitkeep
-!edits/.gitkeep
 !logs/.gitkeep
+data/jobs.json
+data/edit-sessions.json

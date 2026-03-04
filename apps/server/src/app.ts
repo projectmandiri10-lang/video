@@ -16,24 +16,14 @@ import {
 } from "./constants.js";
 import { JobsStore } from "./stores/jobs-store.js";
 import { SettingsStore } from "./stores/settings-store.js";
-import type {
-  EditSessionRecord,
-  GenerateSpeechInput,
-  JobRecord,
-  StyleId,
-  VideoSourceType
-} from "./types.js";
+import type { GenerateSpeechInput, JobRecord, StyleId } from "./types.js";
 import {
-  parseSpeechRate,
-  parseTtsPreviewInput,
   parseRetryStyleId,
   parseSettings,
-  parseTimelineItems,
-  parseVideoSourceType,
-  parseVoiceGender
+  parseSpeechRate,
+  parseTtsPreviewInput
 } from "./validation.js";
 import {
-  EDITS_DIR,
   OUTPUTS_DIR,
   UPLOADS_DIR,
   WEB_DIST_DIR
@@ -41,7 +31,6 @@ import {
 import { probeVideoDuration } from "./utils/video.js";
 import type { IJobProcessor } from "./services/job-processor.js";
 import { openPathInExplorer } from "./utils/open-location.js";
-import { EditorService, sessionPreviewPublicPath } from "./services/editor-service.js";
 import { writeWav24kMono } from "./utils/audio.js";
 
 interface BuildAppOptions {
@@ -49,7 +38,6 @@ interface BuildAppOptions {
   webOrigin: string;
   settingsStore: SettingsStore;
   jobsStore: JobsStore;
-  editorService: EditorService;
   processor: IJobProcessor;
   speechGenerator?: {
     generateSpeech: (
@@ -79,28 +67,6 @@ function pickVideoExtension(part: MultipartFile): string {
   }
   const fromMime = mime.extension(part.mimetype || "");
   return fromMime ? `.${fromMime}` : ".mp4";
-}
-
-function toClientEditSession(session: EditSessionRecord) {
-  return {
-    sessionId: session.sessionId,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    targetWidth: session.targetWidth,
-    targetHeight: session.targetHeight,
-    previewDurationSec: session.previewDurationSec,
-    previewPublicPath: session.previewPath
-      ? sessionPreviewPublicPath(session.sessionId)
-      : undefined,
-    timeline: session.timeline,
-    clips: session.clips.map((clip) => ({
-      clipId: clip.clipId,
-      originalName: clip.originalName,
-      mimeType: clip.mimeType,
-      durationSec: clip.durationSec,
-      createdAt: clip.createdAt
-    }))
-  };
 }
 
 async function maybeRegisterWebStatic(app: FastifyInstance): Promise<void> {
@@ -140,18 +106,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   await app.register(multipart, {
     limits: {
       fileSize: MAX_UPLOAD_BYTES,
-      files: 24
+      files: 1
     }
   });
   await app.register(fastifyStatic, {
     root: OUTPUTS_DIR,
-    prefix: "/outputs/",
-    decorateReply: false
-  });
-  await app.register(fastifyStatic, {
-    root: EDITS_DIR,
-    prefix: "/edits/",
-    decorateReply: false
+    prefix: "/outputs/"
   });
   await maybeRegisterWebStatic(app);
 
@@ -231,123 +191,6 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return jobs;
   });
 
-  app.delete("/api/jobs/:jobId", async (request, reply) => {
-    const params = request.params as { jobId: string };
-    const job = await options.jobsStore.getById(params.jobId);
-    if (!job) {
-      return reply.code(404).send({ message: "Job tidak ditemukan." });
-    }
-    if (job.overallStatus === "running" || job.overallStatus === "queued") {
-      return reply.code(400).send({
-        message: "Job dengan status running/queued tidak bisa dihapus."
-      });
-    }
-
-    const deleted = await options.jobsStore.delete(params.jobId);
-    if (!deleted) {
-      return reply.code(404).send({ message: "Job tidak ditemukan." });
-    }
-    return reply.code(204).send();
-  });
-
-  app.post("/api/editor/session", async (_request, reply) => {
-    try {
-      const session = await options.editorService.createSession();
-      return reply.code(201).send(toClientEditSession(session));
-    } catch (error) {
-      return reply.code(500).send({
-        message: "Gagal membuat session editor.",
-        error: (error as { message?: string })?.message
-      });
-    }
-  });
-
-  app.get("/api/editor/:sessionId", async (request, reply) => {
-    const params = request.params as { sessionId: string };
-    const session = await options.editorService.getSession(params.sessionId);
-    if (!session) {
-      return reply.code(404).send({ message: "Session editor tidak ditemukan." });
-    }
-    return reply.send(toClientEditSession(session));
-  });
-
-  app.post("/api/editor/:sessionId/clips", async (request, reply) => {
-    const params = request.params as { sessionId: string };
-    const session = await options.editorService.getSession(params.sessionId);
-    if (!session) {
-      return reply.code(404).send({ message: "Session editor tidak ditemukan." });
-    }
-
-    const parts = (
-      request as unknown as {
-        parts: () => AsyncIterable<MultipartFile | any>;
-      }
-    ).parts();
-    const uploadedFilePaths: string[] = [];
-    let lastSession = session;
-
-    try {
-      for await (const part of parts) {
-        if (part.type !== "file") {
-          continue;
-        }
-        const ext = pickVideoExtension(part);
-        const clipPath = path.join(EDITS_DIR, params.sessionId, "clips", `${nanoid(8)}${ext}`);
-        await pipeline(part.file, createWriteStream(clipPath));
-        uploadedFilePaths.push(clipPath);
-        lastSession = await options.editorService.addClip(params.sessionId, {
-          originalName: part.filename || "clip.mp4",
-          mimeType: part.mimetype || "video/mp4",
-          filePath: clipPath
-        });
-      }
-      if (!uploadedFilePaths.length) {
-        return reply.code(400).send({ message: "Tidak ada file clip yang diupload." });
-      }
-      return reply.send(toClientEditSession(lastSession));
-    } catch (error) {
-      await Promise.all(uploadedFilePaths.map((item) => rm(item, { force: true })));
-      return reply.code(400).send({
-        message: "Gagal upload clip editor.",
-        error: (error as { message?: string })?.message
-      });
-    }
-  });
-
-  app.put("/api/editor/:sessionId/timeline", async (request, reply) => {
-    const params = request.params as { sessionId: string };
-    try {
-      const timeline = parseTimelineItems(request.body);
-      const session = await options.editorService.updateTimeline(params.sessionId, timeline);
-      return reply.send(toClientEditSession(session));
-    } catch (error) {
-      const message = (error as { message?: string })?.message || "Timeline tidak valid.";
-      const statusCode = message.includes("tidak ditemukan") ? 404 : 400;
-      return reply.code(statusCode).send({ message });
-    }
-  });
-
-  app.post("/api/editor/:sessionId/render-preview", async (request, reply) => {
-    const params = request.params as { sessionId: string };
-    try {
-      const session = await options.editorService.renderPreview(params.sessionId);
-      return reply.send(toClientEditSession(session));
-    } catch (error) {
-      const message = (error as { message?: string })?.message || "Gagal render preview.";
-      const statusCode = message.includes("tidak ditemukan") ? 404 : 400;
-      return reply.code(statusCode).send({ message });
-    }
-  });
-
-  app.delete("/api/editor/:sessionId", async (request, reply) => {
-    const params = request.params as { sessionId: string };
-    const deleted = await options.editorService.deleteSession(params.sessionId);
-    if (!deleted) {
-      return reply.code(404).send({ message: "Session editor tidak ditemukan." });
-    }
-    return reply.code(204).send();
-  });
-
   app.get("/api/jobs/:jobId", async (request, reply) => {
     const params = request.params as { jobId: string };
     const job = await options.jobsStore.getById(params.jobId);
@@ -394,9 +237,6 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
               ...item,
               status: "pending",
               errorMessage: undefined,
-              retryCount: 0,
-              nextRetryAt: undefined,
-              lastErrorCode: undefined,
               updatedAt: nowIso()
             }
           : item
@@ -452,12 +292,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     let description = "";
     let affiliateLink = "";
     let styleIdRaw = "";
-    let sourceTypeRaw = "";
-    let editSessionId = "";
     let voiceNameRaw = "";
-    let voiceGenderRaw = "";
     let speechRateRaw = "";
-    let uploadedOriginalName = "";
     let videoPath = "";
     let videoMimeType = "video/mp4";
     let uploadDir = "";
@@ -470,7 +306,6 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         const extension = pickVideoExtension(part);
         videoPath = path.join(uploadDir, `source${extension}`);
         videoMimeType = part.mimetype || "video/mp4";
-        uploadedOriginalName = part.filename || path.basename(videoPath);
         await pipeline(part.file, createWriteStream(videoPath));
         continue;
       }
@@ -486,17 +321,8 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       if (part.type === "field" && part.fieldname === "styleId") {
         styleIdRaw = String(part.value || "").trim();
       }
-      if (part.type === "field" && part.fieldname === "sourceType") {
-        sourceTypeRaw = String(part.value || "").trim();
-      }
-      if (part.type === "field" && part.fieldname === "editSessionId") {
-        editSessionId = String(part.value || "").trim();
-      }
       if (part.type === "field" && part.fieldname === "voiceName") {
         voiceNameRaw = String(part.value || "").trim();
-      }
-      if (part.type === "field" && part.fieldname === "voiceGender") {
-        voiceGenderRaw = String(part.value || "").trim();
       }
       if (part.type === "field" && part.fieldname === "speechRate") {
         speechRateRaw = String(part.value || "").trim();
@@ -506,6 +332,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       }
     }
 
+    if (!videoPath) {
+      return reply.code(400).send({ message: "File video wajib diisi." });
+    }
     if (!title || !description || !affiliateLink) {
       if (uploadDir) {
         await rm(uploadDir, { recursive: true, force: true });
@@ -534,19 +363,6 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       });
     }
 
-    let sourceType: VideoSourceType;
-    try {
-      sourceType = parseVideoSourceType(sourceTypeRaw);
-    } catch (error) {
-      if (uploadDir) {
-        await rm(uploadDir, { recursive: true, force: true });
-      }
-      return reply.code(400).send({
-        message: "sourceType tidak valid. Gunakan 'upload' atau 'editing'.",
-        error: (error as { message?: string })?.message
-      });
-    }
-
     try {
       const settings = await options.settingsStore.get();
       const selectedStyle = settings.styles.find(
@@ -563,9 +379,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       if (voiceNameRaw) {
         const voice = findTtsVoiceByName(voiceNameRaw);
         if (!voice) {
-          if (uploadDir) {
-            await rm(uploadDir, { recursive: true, force: true });
-          }
+          await rm(uploadDir, { recursive: true, force: true });
           return reply.code(400).send({
             message: `Voice ${voiceNameRaw} tidak tersedia pada katalog Gemini.`
           });
@@ -573,29 +387,12 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         selectedVoiceName = voice.voiceName;
       }
 
-      let selectedVoiceGender = findTtsVoiceByName(selectedVoiceName)?.gender;
-      if (voiceGenderRaw) {
-        try {
-          selectedVoiceGender = parseVoiceGender(voiceGenderRaw);
-        } catch (error) {
-          if (uploadDir) {
-            await rm(uploadDir, { recursive: true, force: true });
-          }
-          return reply.code(400).send({
-            message: "voiceGender tidak valid.",
-            error: (error as { message?: string })?.message
-          });
-        }
-      }
-
       let selectedSpeechRate = selectedStyle.speechRate;
       if (speechRateRaw) {
         try {
           selectedSpeechRate = parseSpeechRate(speechRateRaw);
         } catch (error) {
-          if (uploadDir) {
-            await rm(uploadDir, { recursive: true, force: true });
-          }
+          await rm(uploadDir, { recursive: true, force: true });
           return reply.code(400).send({
             message: "speechRate tidak valid (range 0.7 - 1.3).",
             error: (error as { message?: string })?.message
@@ -603,48 +400,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         }
       }
 
-      let chosenVideoPath = videoPath;
-      let chosenVideoMime = videoMimeType;
-      let chosenVideoLabel = uploadedOriginalName || "Uploaded video";
-      let chosenEditSessionId: string | undefined;
-
-      if (sourceType === "upload") {
-        if (!videoPath) {
-          if (uploadDir) {
-            await rm(uploadDir, { recursive: true, force: true });
-          }
-          return reply.code(400).send({ message: "File video wajib diisi untuk source upload." });
-        }
-      } else {
-        if (uploadDir) {
-          await rm(uploadDir, { recursive: true, force: true });
-        }
-        if (!editSessionId) {
-          return reply.code(400).send({
-            message: "editSessionId wajib diisi untuk source editing."
-          });
-        }
-        const session = await options.editorService.getSession(editSessionId);
-        if (!session) {
-          return reply.code(404).send({ message: "Session editor tidak ditemukan." });
-        }
-        if (!session.previewPath) {
-          return reply.code(400).send({
-            message: "Preview editing belum tersedia. Render preview dulu sebelum generate."
-          });
-        }
-        await access(session.previewPath);
-        chosenVideoPath = session.previewPath;
-        chosenVideoMime = "video/mp4";
-        chosenVideoLabel = `Editing Preview ${editSessionId}`;
-        chosenEditSessionId = editSessionId;
-      }
-
-      const durationSec = await durationProbe(chosenVideoPath);
+      const durationSec = await durationProbe(videoPath);
       if (durationSec > settings.maxVideoSeconds) {
-        if (uploadDir) {
-          await rm(uploadDir, { recursive: true, force: true });
-        }
+        await rm(uploadDir, { recursive: true, force: true });
         return reply.code(400).send({
           message: `Durasi video ${durationSec.toFixed(2)}s melebihi batas ${settings.maxVideoSeconds}s.`
         });
@@ -658,14 +416,10 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
         title,
         description,
         affiliateLink,
-        sourceType,
-        editSessionId: chosenEditSessionId,
-        sourceVideoLabel: chosenVideoLabel,
         voiceName: selectedVoiceName,
-        voiceGender: selectedVoiceGender,
         speechRate: selectedSpeechRate,
-        videoPath: chosenVideoPath,
-        videoMimeType: chosenVideoMime,
+        videoPath,
+        videoMimeType,
         videoDurationSec: durationSec,
         overallStatus: "queued",
         styles: createStyleRuns([selectedStyleId])

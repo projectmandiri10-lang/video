@@ -4,7 +4,6 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import ffmpegPath from "ffmpeg-static";
-import type { EditClipAsset, EditTimelineItem } from "../types.js";
 import { probeVideoDuration } from "./video.js";
 
 function resolveFfmpegExecutable(): string {
@@ -64,16 +63,9 @@ function toWavIfPcm(data: Buffer, mimeType: string): Buffer {
   return Buffer.concat([header, data]);
 }
 
-interface FfmpegRunOptions {
-  cwd?: string;
-}
-
-async function runFfmpeg(args: string[], options?: FfmpegRunOptions): Promise<void> {
+async function runFfmpeg(args: string[]): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn(FFMPEG_EXEC, args, {
-      windowsHide: true,
-      cwd: options?.cwd
-    });
+    const proc = spawn(FFMPEG_EXEC, args, { windowsHide: true });
     let stderr = "";
     proc.stderr.on("data", (chunk: Buffer) => {
       stderr += String(chunk);
@@ -193,92 +185,4 @@ export async function combineVideoWithVoiceOver(
     targetDurationText,
     outputVideoPath
   ]);
-}
-
-function quoteSrtForFfmpeg(input: string): string {
-  return input.replace(/\\/g, "/").replace(/'/g, "\\'");
-}
-
-export async function burnSubtitleToVideo(
-  videoPath: string,
-  srtPath: string,
-  outputPath: string
-): Promise<void> {
-  const style =
-    "Alignment=2,MarginV=32,FontName=Arial,FontSize=22,Bold=1,BorderStyle=1,Outline=2,Shadow=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000";
-  const srtName = quoteSrtForFfmpeg(path.basename(srtPath));
-  const filter = `subtitles='${srtName}':force_style='${style}'`;
-
-  await runFfmpeg(
-    [
-      "-y",
-      "-i",
-      videoPath,
-      "-vf",
-      filter,
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "23",
-      "-pix_fmt",
-      "yuv420p",
-      "-c:a",
-      "copy",
-      outputPath
-    ],
-    {
-      cwd: path.dirname(srtPath)
-    }
-  );
-}
-
-export function buildTimelineFilter(
-  timeline: Array<{ clip: EditClipAsset; item: EditTimelineItem }>,
-  targetWidth: number,
-  targetHeight: number
-): string {
-  const parts: string[] = [];
-  const labels: string[] = [];
-  for (const [index, entry] of timeline.entries()) {
-    const start = entry.item.startSec.toFixed(3);
-    const end = entry.item.endSec.toFixed(3);
-    const outLabel = `v${index}`;
-    parts.push(
-      `[${index}:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p[${outLabel}]`
-    );
-    labels.push(`[${outLabel}]`);
-  }
-  parts.push(`${labels.join("")}concat=n=${timeline.length}:v=1:a=0[vout]`);
-  return parts.join(";");
-}
-
-export async function renderEditedPreviewFromTimeline(
-  timeline: Array<{ clip: EditClipAsset; item: EditTimelineItem }>,
-  outputPath: string,
-  targetWidth: number,
-  targetHeight: number
-): Promise<void> {
-  const args: string[] = ["-y"];
-  for (const entry of timeline) {
-    args.push("-i", entry.clip.filePath);
-  }
-  args.push(
-    "-filter_complex",
-    buildTimelineFilter(timeline, targetWidth, targetHeight),
-    "-map",
-    "[vout]",
-    "-an",
-    "-c:v",
-    "libx264",
-    "-preset",
-    "veryfast",
-    "-crf",
-    "23",
-    "-pix_fmt",
-    "yuv420p",
-    outputPath
-  );
-  await runFfmpeg(args);
 }

@@ -2,9 +2,8 @@
 
 Aplikasi lokal untuk otomatisasi:
 - input: `video + judul + deskripsi + affiliate link`
-- output per style: `.srt`, `.wav` (24kHz mono), `.mp4` final (voice-over + subtitle burn-in, audio asli source dimute), dan `caption + hashtags` siap upload Facebook Reels (juga tersimpan sebagai file `.txt`)
+- output per style: `.srt`, `.wav` (24kHz mono), `.mp4` (video + voice-over), dan `caption + hashtags` siap upload Facebook Reels (juga tersimpan sebagai file `.txt`)
 - style default: `evergreen`, `soft_selling`, `hard_selling`, `problem_solution`
-- pilihan voice TTS Gemini (termasuk preset `Excited` pria/wanita) dipilih langsung di halaman `Generate`
 
 ## Stack
 - Frontend: React + Vite + TypeScript
@@ -55,14 +54,11 @@ npm run start
 - `GET /api/health`
 - `GET /api/settings`
 - `PUT /api/settings`
-- `POST /api/jobs` (multipart):
-  - wajib: `title`, `description`, `affiliateLink`, `styleId`, `sourceType=upload`, `video`
+- `POST /api/jobs` (multipart: `video`, `title`, `description`)
 - `GET /api/jobs`
 - `GET /api/jobs/:jobId`
 - `POST /api/jobs/:jobId/retry` body `{ "styleId": "evergreen" | "soft_selling" | "hard_selling" | "problem_solution" }`
 - `POST /api/jobs/:jobId/open-location` body `{ "styleId": "evergreen" | "soft_selling" | "hard_selling" | "problem_solution" }`
-- `GET /api/tts/voices`
-- `POST /api/tts/preview` body `{ "voiceName": "...", "speechRate": 1.0, "text": "..." }`
 
 ## Catatan Operasional
 - Maks durasi video default: 60 detik (ubah di settings).
@@ -71,17 +67,10 @@ npm run start
 - Riwayat job otomatis dipangkas maksimal 20 entry.
 - Log tersimpan di `logs/app.log`.
 - Tombol output di UI membuka folder hasil (`Open File Location`) alih-alih download langsung.
-- Halaman `Generate` juga menyediakan:
-  - dropdown gender voice (`Wanita/Pria/Netral`)
-  - dropdown versi `Excited` (V1-V3)
-  - dropdown nama voice resmi Gemini
-  - review suara (preview audio) sebelum generate
-- Tab `Jobs` menampilkan caption final siap copy serta tombol copy affiliate link.
+- Form `Generate` menyediakan kotak `Affiliate Link`.
+- Tab `Jobs` menampilkan caption final siap copy (caption + hashtag + affiliate link job).
 
 ## Testing
 ```bash
 npm run test
 ```
-
-Catatan:
-- Runtime test memakai root storage terpisah (`apps/server/.test-runtime`) agar tidak mengubah `data/`, `outputs/`, atau `uploads/` lokal Anda.

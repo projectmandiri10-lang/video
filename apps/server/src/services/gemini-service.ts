@@ -99,12 +99,9 @@ function isTransientError(error: unknown): boolean {
   const parsed = parseGeminiApiError(error);
   const message = String((error as { message?: string })?.message || error).toLowerCase();
   return (
-    parsed.code === 503 ||
     parsed.code === 429 ||
-    parsed.status === "UNAVAILABLE" ||
     parsed.status === "RESOURCE_EXHAUSTED" ||
     message.includes("429") ||
-    message.includes("503") ||
     message.includes("resource_exhausted") ||
     message.includes("rate") ||
     message.includes("timeout") ||
@@ -123,9 +120,6 @@ function retryDelayMs(error: unknown, _attempt: number, fallbackDelayMs: number)
   const parsed = parseGeminiApiError(error);
   const fromApi = parsed.retryDelayMs;
   if (!fromApi || !Number.isFinite(fromApi) || fromApi <= 0) {
-    if (parsed.code === 503 || parsed.status === "UNAVAILABLE") {
-      return Math.min(Math.max(fallbackDelayMs, 5000), MAX_RETRY_DELAY_MS);
-    }
     return fallbackDelayMs;
   }
   return Math.min(Math.max(fromApi, fallbackDelayMs), MAX_RETRY_DELAY_MS);
@@ -154,8 +148,8 @@ export class GeminiService {
           }
         }),
       {
-        attempts: 5,
-        baseDelayMs: 1500,
+        attempts: 3,
+        baseDelayMs: 700,
         shouldRetry: isTransientError,
         getDelayMs: retryDelayMs
       }
@@ -196,8 +190,8 @@ export class GeminiService {
     };
 
     let script = await withRetry(() => run(input.prompt), {
-      attempts: 6,
-      baseDelayMs: 2000,
+      attempts: 3,
+      baseDelayMs: 700,
       shouldRetry: isTransientError,
       getDelayMs: retryDelayMs
     });
@@ -242,8 +236,8 @@ export class GeminiService {
     };
 
     return await withRetry(execute, {
-      attempts: 6,
-      baseDelayMs: 2000,
+      attempts: 3,
+      baseDelayMs: 700,
       shouldRetry: isTransientError,
       getDelayMs: retryDelayMs
     });
@@ -271,8 +265,8 @@ export class GeminiService {
           ]
         }),
       {
-        attempts: 6,
-        baseDelayMs: 2000,
+        attempts: 3,
+        baseDelayMs: 700,
         shouldRetry: isTransientError,
         getDelayMs: retryDelayMs
       }
